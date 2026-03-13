@@ -25,7 +25,6 @@
 ### 方式三：命令行部署
 
 ```bash
-# 使用部署管理工具
 python ros_stack_manager.py create --name openclaw-demo --region cn-hangzhou --params parameters.yaml
 ```
 
@@ -33,16 +32,16 @@ python ros_stack_manager.py create --name openclaw-demo --region cn-hangzhou --p
 
 | 文件 | 说明 |
 |------|------|
-| `template.yaml` | ROS 主模板，包含完整的资源定义 |
-| `ros_stack_manager.py` | 部署管理工具，支持创建、更新、删除、状态查询等操作 |
-| `parameters.yaml` | 参数示例文件 |
-| `docs/` | 详细部署文档 |
+| `template.yaml` | ROS 主模板 |
+| `ros_stack_manager.py` | 部署管理工具 |
+| `parameters.yaml` | 参数示例 |
+| `docs/` | 详细文档 |
 
 ## 前置条件
 
-- 镜像缓存白名单：[提交工单](https://smartservice.console.aliyun.com/service/create-ticket) 申请开通
-- 百炼 API Key：[获取方式](https://developer.aliyun.com/article/1655158)
-- TLS 证书：为 E2B 域名准备有效的 TLS 证书
+- **镜像缓存白名单**：[提交工单](https://smartservice.console.aliyun.com/service/create-ticket) 申请开通
+- **百炼 API Key**：[获取方式](https://developer.aliyun.com/article/1655158)
+- **TLS 证书**：为 E2B 域名准备有效的 TLS 证书
 
 ## 文档
 
