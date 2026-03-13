@@ -62,24 +62,35 @@ sudo cp /etc/letsencrypt/live/your.domain/privkey.pem ./privkey.pem
 
 登录 [百炼控制台](https://bailian.console.aliyun.com/) 创建 API Key，用于 AI 模型调用。
 
-### 4. 配置镜像缓存（推荐）
+### 4. 配置镜像缓存加速（可选但强烈推荐）
 
 镜像缓存可显著加速 ACS Pod 启动，将镜像拉取时间从**分钟级降低到秒级**。
 
-> **注意**：镜像缓存功能目前在白名单邀测阶段，需要 [提交工单](https://smartservice.console.aliyun.com/service/create-ticket) 申请开通。
+> **重要说明**：镜像缓存功能需要在 **ACS 集群层面** 申请白名单开通，无法通过 ROS 模板自动配置。请在部署前完成以下步骤。
 
-**创建镜像缓存：**
+**步骤一：申请镜像缓存白名单**
+
+1. [提交工单](https://smartservice.console.aliyun.com/service/create-ticket) 申请开通镜像缓存功能
+2. 工单标题建议填写：「申请开通 ACS 镜像缓存功能」
+3. 内容中注明需要开通的地域和账号 UID
+4. 等待工单处理完成（通常 1-2 个工作日）
+
+**步骤二：创建镜像缓存**
+
+白名单开通后，创建镜像缓存：
 
 1. 登录 [容器计算服务控制台](https://acs.console.aliyun.com/)
 2. 左侧导航栏选择「镜像缓存」→「创建镜像缓存」
 3. 配置：
    - **镜像缓存名**：`openclaw-image-cache`
-   - **镜像**：`registry.cn-hangzhou.aliyuncs.com/acs-samples/clawdbot:2026.1.24.3`
+   - **镜像**：`registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2`
 4. 等待状态变为「制作完成」
 
 **计费说明**：每个地域免费 20 个镜像缓存，超出部分 0.18 元/GiB/月
 
 **支持地域**：华北2（北京）、华东2（上海）、华东1（杭州）、华北6（乌兰察布）、华南1（深圳）、中国香港、新加坡
+
+> **注意**：如果未开通镜像缓存白名单，Pod 启动时会报 403 错误。
 
 ## 方式一：计算巢控制台部署（推荐新手）
 
@@ -122,31 +133,11 @@ sudo cp /etc/letsencrypt/live/your.domain/privkey.pem ./privkey.pem
 3. 搜索 `ack-extend-network-controller`，点击「安装」
 4. 配置参数（使用默认值即可），确认安装
 
-**方式 B - 命令行安装：**
 
-```bash
-# 获取集群凭证
-python ros_stack_manager.py kubeconfig --from-stack <stack-name> --region cn-beijing
-
-# 安装 EIP 组件
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ack-extend-network-controller
-  namespace: kube-system
-data:
-  config.yaml: |
-    enableControllers:
-      - eip
-EOF
-```
 
 **验证安装：**
 
-```bash
-kubectl get pods -n kube-system | grep extend-network
-```
+直至组件显示安装成功
 
 ### 为 Pod 配置 EIP
 
@@ -293,8 +284,9 @@ sbx.kill()
 ### Q: 沙箱启动慢？
 
 **A**: 
-1. 确认已配置镜像缓存（需申请白名单）
+1. 确认已配置镜像缓存（需在 ACS 集群层面申请白名单，详见「配置镜像缓存加速」章节）
 2. 增加 SandboxSet 预热副本数：`kubectl edit sandboxset openclaw`
+3. 如果 Pod 报 403 错误，说明镜像缓存白名单未开通
 
 ### Q: 如何查看沙箱状态？
 

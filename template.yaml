@@ -8,38 +8,6 @@ Conditions:
       - NewVPC
       - Ref: VpcOption
 Parameters:
-  ImageCacheWhitelistConfirmation:
-    Type: String
-    Label:
-      en: Image Cache Whitelist Confirmation
-      zh-cn: 镜像缓存白名单确认
-    AssociationProperty: AlertCheckbox
-    AssociationPropertyMetadata:
-      Description:
-        zh-cn: |
-          <strong>重要前置条件：</strong>
-          本服务使用<strong>镜像缓存</strong>加速 Pod 启动（分钟级降至秒级）。镜像缓存功能目前在白名单邀测阶段，请确保已申请开通。
-          <br/><br/>
-          <strong>申请方式：</strong><a href="https://smartservice.console.aliyun.com/service/create-ticket" target="_blank">提交工单</a> 申请开通镜像缓存功能
-          <br/><br/>
-          <strong>支持地域：</strong>华北2（北京）、华东2（上海）、华东1（杭州）、华北6（乌兰察布）、华南1（深圳）、中国香港、新加坡
-          <br/><br/>
-          <strong>计费说明：</strong>每个地域免费 20 个镜像缓存，超出部分按量计费
-        en: |
-          <strong>Important Preconditions:</strong>
-          This service uses <strong>Image Cache</strong> to accelerate Pod startup (from minutes to seconds). Image Cache is currently in whitelist beta, please ensure it has been enabled.
-          <br/><br/>
-          <strong>How to apply:</strong> <a href="https://smartservice.console.aliyun.com/service/create-ticket" target="_blank">Submit a ticket</a> to enable Image Cache
-          <br/><br/>
-          <strong>Supported regions:</strong> China (Beijing, Shanghai, Hangzhou, Ulanqab, Shenzhen), Hong Kong, Singapore
-          <br/><br/>
-          <strong>Pricing:</strong> 20 free image caches per region, additional usage charged on-demand
-      ConfirmText:
-        zh-cn: 我已确认开通镜像缓存白名单，或已了解未开通可能导致 Pod 启动较慢
-        en: I confirm that Image Cache whitelist is enabled, or I understand Pod startup may be slower without it
-      Alert: true
-      Type: warning
-      MustChecked: true
   ZoneId1:
     Type: String
     AssociationProperty: ALIYUN::ECS::Instance:ZoneId
@@ -859,7 +827,6 @@ Resources:
                   annotations:
                     network.alibabacloud.com/pod-with-eip: "true"
                     network.alibabacloud.com/eip-bandwidth: "5"
-                    image.alibabacloud.com/enable-image-cache: "true"
                 spec:
                   initContainers:
                     - name: init
@@ -1152,7 +1119,6 @@ Metadata:
           en: Cluster Configuration
           zh-cn: 集群 配置
       - Parameters:
-          - ImageCacheWhitelistConfirmation
           - ZoneId1
           - ZoneId2
           - VpcOption
