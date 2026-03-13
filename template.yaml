@@ -459,7 +459,7 @@ Parameters:
     AssociationProperty: TextArea
     AssociationPropertyMetadata:
       DynamicValue:
-        # 支持的地域：北京、上海、广州、杭州、新加坡、香港、东京 - 使用对应地域的 ACK 镜像仓库
+        # 支持的地域：北京、上海、广州、杭州、新加坡、香港、东京 - 使用对应地域的 ACK 内网镜像仓库
         - Condition:
             Fn::Contains:
               - - cn-beijing
@@ -470,7 +470,7 @@ Parameters:
                 - cn-hongkong
                 - ap-northeast-1
               - ${RegionId}
-          Value: registry-${RegionId}.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2
+          Value: ack-${RegionId}-registry-vpc.${RegionId}.cr.aliyuncs.com/ack-demo/openclaw:2026.3.2
         # 其他地域 - 使用杭州公网镜像仓库
         - Condition:
             Fn::Not:
