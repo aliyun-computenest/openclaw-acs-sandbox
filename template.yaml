@@ -352,11 +352,15 @@ Parameters:
       en: Please enter a valid domain name
       zh-cn: 请输入有效的域名
     AllowedPattern: ^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z]{2,})+$
+    Default: agent-vpc.infra
   TLSCert:
     Type: String
     Label:
       en: TLS Cert.
       zh-cn: TLS 证书
+    Description:
+      zh-cn: 证书对应的fullchain.pem文件
+      en: The fullchain.pem file of the certificate
     NoEcho: true
     AssociationProperty: FileContent
     AssociationPropertyMetadata:
@@ -366,6 +370,9 @@ Parameters:
     Label:
       en: TLS Secret.
       zh-cn: TLS 证书密钥
+    Description:
+      zh-cn: 证书对应的privkey.pem文件
+      en: The privkey.pem file of the certificate
     NoEcho: true
     AssociationProperty: FileContent
     AssociationPropertyMetadata:
@@ -373,15 +380,17 @@ Parameters:
   AdminApiKey:
     Type: String
     Label:
-      en: The ApiKey for managing the sandbox
-      zh-cn: 管理沙箱的ApiKey
+      zh-cn: 访问E2B API的E2B_API_KEY
+      en: E2B_API_KEY for accessing E2B API
     AssociationProperty: AutoCompleteInput
     AssociationPropertyMetadata:
-      Length: 10
-      Prefix: E2B-
+      Length: 32
+      Prefix: e2b_
       CharacterClasses:
         - Class: lowercase
-          min: 1
+          min: 10
+        - Class: number
+          min: 10
     Default: null
   SandboxManagerCpu:
     Type: Number
@@ -1093,6 +1102,8 @@ Outputs:
       en: OpenClaw Gateway Token
     Value:
       Ref: OpenClawGatewayToken
+      NoEcho: true  
+
 Metadata:
   ALIYUN::ROS::Interface:
     Hidden:
