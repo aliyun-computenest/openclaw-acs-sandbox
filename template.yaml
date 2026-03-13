@@ -1073,25 +1073,20 @@ Outputs:
     Value: |
       【OpenClaw 访问配置指引】
       
-      1. 获取集群凭证：
-         aliyun cs DescribeClusterUserKubeconfig --ClusterId <ClusterId> --region cn-beijing
+      1. 参考文档安装ACK Extend Network Controller组件：
       
-      2. 配置 kubectl 后，创建公网访问入口（二选一）：
-      
-         方式A - LoadBalancer（推荐）：
-         kubectl patch svc openclaw-svc -p '{"spec":{"type":"LoadBalancer"}}'
-         kubectl get svc openclaw-svc -w  # 等待获取 EXTERNAL-IP
-      
-         方式B - 端口转发（临时测试）：
-         kubectl port-forward svc/openclaw-svc 18789:18789
-         访问: http://localhost:18789/?token=<OpenClawGatewayToken>
-      
+      2. 当Pod具备EIP后通过以下方式访问：
+    
       3. 访问地址：http://<EXTERNAL-IP>:18789/?token=<OpenClawGatewayToken>
-  AdminApikey:
-    Label: 访问E2B API的AdminApikey
-    NoEcho: true
+  E2B_API_KEY:
+    Label: 访问E2B API的E2B_API_KEY
     Value:
-      Ref: AdminApiKey
+      Ref: AdminApiKey 
+    NoEcho: true  
+  E2B_DOMAIN:
+    Label: 访问E2B API的域名
+    Value:
+      Ref: E2BDomainAddress
   OpenClawGatewayToken:
     Label:
       zh-cn: OpenClaw访问Token
