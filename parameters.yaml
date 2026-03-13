@@ -1,0 +1,29 @@
+# OpenClaw 一键部署参数配置文件
+# 用于 ROS 资源栈部署
+
+# 基础配置
+RegionId: cn-hangzhou
+ZoneId1: cn-hangzhou-i
+ZoneId2: cn-hangzhou-j
+
+# VPC 配置
+VpcOption: ExistingVPC
+VpcId: vpc-bp1bgo8rono1497akzaw2
+VSwitchId1: vsw-bp1l37i8dg3h46vhpsepb
+VSwitchId2: vsw-bp1vkzglalytql4thg4j7
+
+# 集群配置
+ClusterOption: NewAcs
+ServiceCidr: 172.16.0.0/16
+
+# E2B 配置
+E2BDomainAddress: zhaoheng.xyz
+# TLS证书文件路径（相对路径），key 以 File 结尾时脚本会自动读取文件内容并去掉 File 后缀传给 ROS
+TLSCertFile: fullchain.pem
+TLSSecretFile: privkey.pem
+
+# OpenClaw 配置
+OpenClawReplicas: 1
+# BaiLianApiKey: sk-xxxxxxxxx  # 请填入您的百炼API Key
+# OpenClawGatewayToken: openclaw-xxxxxx  # 访问Token（自动生成）
+# AdminApiKey: E2B-xxxxxx  # 沙箱管理ApiKey（自动生成）
