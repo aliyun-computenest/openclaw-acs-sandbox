@@ -470,7 +470,7 @@ Parameters:
                 - cn-hongkong
                 - ap-northeast-1
               - ${RegionId}
-          Value: ack-${RegionId}-registry-vpc.${RegionId}.cr.aliyuncs.com/ack-demo/openclaw:2026.3.2
+          Value: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2
         # 其他地域 - 使用杭州公网镜像仓库
         - Condition:
             Fn::Not:
@@ -534,114 +534,6 @@ Resources:
         Fn::GetAtt:
           - PrivateZone
           - ZoneId
-  # ========== NAS 存储资源 (手动创建) ==========
-  # 创建 NAS 文件系统
-  NASFileSystem:
-    Type: ALIYUN::NAS::FileSystem
-    DependsOn:
-      - AckOrAcsCluster
-    Properties:
-      ProtocolType: NFS
-      StorageType: Performance
-      ZoneId:
-        Ref: ZoneId2
-      VpcId:
-        Fn::GetAtt:
-          - VpcModule
-          - VpcId
-      VSwitchId:
-        Fn::GetAtt:
-          - VpcModule
-          - VSwitchId
-      Description: OpenClaw_Enterprise_NAS
-  # 创建 NAS 挂载点
-  NASMountTarget:
-    Type: ALIYUN::NAS::MountTarget
-    DependsOn:
-      - NASFileSystem
-    Properties:
-      FileSystemId:
-        Fn::GetAtt:
-          - NASFileSystem
-          - FileSystemId
-      NetworkType: Vpc
-      VpcId:
-        Fn::GetAtt:
-          - VpcModule
-          - VpcId
-      VSwitchId:
-        Fn::GetAtt:
-          - VpcModule
-          - VSwitchId
-      AccessGroupName: DEFAULT_VPC_GROUP_NAME
-  # 等待 NAS 挂载点就绪 (挂载点需要约 2 分钟才能激活)
-  WaitForNAS:
-    Type: ALIYUN::ROS::Sleep
-    DependsOn:
-      - NASMountTarget
-      - SandboxManagerAddon
-    Properties:
-      CreateDuration: 120
-  # 部署 NAS PV 和 PVC (静态挂载)
-  OpenClawNASStorage:
-    Type: ALIYUN::CS::ClusterApplication
-    DependsOn:
-      - WaitForNAS
-    Properties:
-      DefaultNamespace: default
-      ClusterId:
-        Fn::GetAtt:
-          - AckOrAcsCluster
-          - ClusterId
-      YamlContent:
-        Fn::Sub:
-          - |
-            apiVersion: v1
-            kind: PersistentVolume
-            metadata:
-              name: openclaw-nas-pv
-              labels:
-                alicloud-pvname: openclaw-nas-pv
-            spec:
-              capacity:
-                storage: 100Gi
-              accessModes:
-                - ReadWriteMany
-              persistentVolumeReclaimPolicy: Retain
-              csi:
-                driver: nasplugin.csi.alibabacloud.com
-                volumeHandle: openclaw-nas-pv
-                volumeAttributes:
-                  server: "${NASMountTargetDomain}"
-                  path: "/"
-            ---
-            apiVersion: v1
-            kind: PersistentVolumeClaim
-            metadata:
-              name: openclaw-nas-pvc
-              namespace: default
-            spec:
-              accessModes:
-                - ReadWriteMany
-              resources:
-                requests:
-                  storage: 100Gi
-              selector:
-                matchLabels:
-                  alicloud-pvname: openclaw-nas-pv
-          - NASMountTargetDomain:
-              Fn::GetAtt:
-                - NASMountTarget
-                - MountTargetDomain
-      WaitUntil:
-        - Kind: PersistentVolumeClaim
-          Name: openclaw-nas-pvc
-          Namespace: default
-          JsonPath: $.status.phase
-          Operator: Equals
-          Value: Bound
-          Timeout: 300
-          FirstMatch: true
   Sleep:
     Type: ALIYUN::ROS::Sleep
     DependsOn:
@@ -699,7 +591,6 @@ Resources:
       WorkerInstanceMaxCount:
         Ref: WorkerInstanceMaxCount
       ClusterSpec: ack.pro.small
-      EnableCnfsNas: true
       EndpointPublicAccess: true
   # ========== Addon 组件安装（带依赖链） ==========
   # Step 1: ALB Ingress Controller（基础网络）
@@ -729,10 +620,16 @@ Resources:
                   Fn::GetAtt:
                     - VpcModule
                     - VSwitchIdSecondary
+  # Step 2: 等待 ALB Ingress 就绪
+  AlbIngressSleep:
+    Type: ALIYUN::ROS::Sleep
+    DependsOn: AlbIngressAddon
+    Properties:
+      CreateDuration: 60
   # Step 3: Sandbox Controller
   SandboxControllerAddon:
     Type: ALIYUN::CS::ClusterAddons
-    DependsOn: AlbIngressAddon  # 修改：跳过 ExtendNetworkAddon 依赖，避免超时
+    DependsOn: AlbIngressSleep
     Properties:
       ClusterId:
         Fn::GetAtt:
@@ -740,7 +637,7 @@ Resources:
           - ClusterId
       Addons:
         - Name: ack-agent-sandbox-controller
-          Config: '{"workers":{"sandboxWorkers":200,"sandboxsetWorkers":10}}'
+          Config: '{"workers":{"sandboxWorkers":200,"sandboxsetWorkers":10,"sandboxclaimWorkers":200},"featureGate":""}'
   # Step 4: Sandbox Manager
   SandboxManagerAddon:
     Type: ALIYUN::CS::ClusterAddons
@@ -755,7 +652,7 @@ Resources:
         - Name: ack-sandbox-manager
           Config:
             Fn::Sub:
-              - '{"sandboxManager":{"replicaCount":3,"acs":false,"e2b":{"domain":"${E2BDomainAddress}","enableAuth":true,"adminApiKey":"${AdminApiKey}","maxTimeout":7776000},"ingress":{"className":"alb"},"controller":{"resources":{"cpu":"${SandboxManagerCpu}","memory":"${SandboxManagerMemory}"},"logLevel":1},"proxy":{"resources":{"cpu":"2","memory":"4Gi"}}}}'
+              - '{"sandboxManager":{"replicaCount":3,"acs":false,"e2b":{"domain":"${E2BDomainAddress}","enableAuth":true,"adminApiKey":"${AdminApiKey}","maxTimeout":2592000},"ingress":{"className":"alb"},"controller":{"resources":{"cpu":"${SandboxManagerCpu}","memory":"${SandboxManagerMemory}"},"logLevel":5,"enableSLS":true,"maxClaimWorkers":100,"maxCreateQPS":200,"createPodInsteadOfSandbox":false,"extProcMaxConcurrency":3000}}}'
               - E2BDomainAddress:
                   Ref: E2BDomainAddress
                 AdminApiKey:
@@ -810,7 +707,6 @@ Resources:
     Type: ALIYUN::CS::ClusterApplication
     DependsOn:
       - ClusterAppliaction
-      - OpenClawNASStorage
       - AddonSleep
     Properties:
       DefaultNamespace: default
@@ -881,14 +777,9 @@ Resources:
                           value: "${BaiLianApiKey}"
                         - name: GATEWAY_TOKEN 
                           value: "${OpenClawGatewayToken}"
-                        - name: OPENCLAW_DATA_DIR
-                          value: /mnt/nas/data
                       volumeMounts:
                         - name: envd-volume
                           mountPath: /mnt/envd
-                        - name: nas-volume
-                          mountPath: /mnt/nas
-                          subPathExpr: $(POD_NAME)            
                       startupProbe:
                         tcpSocket:
                           port: 18789
@@ -905,9 +796,6 @@ Resources:
                   volumes:
                   - emptyDir: {}
                     name: envd-volume
-                  - name: nas-volume
-                    persistentVolumeClaim:
-                      claimName: openclaw-nas-pvc
           - OpenClawReplicas:
               Ref: OpenClawReplicas
             OpenClawImage:
@@ -1065,6 +953,16 @@ Resources:
                       - ClusterUserKubeconfig
                       - Config
 Outputs:
+  Introduction:
+    Value: 到ACS控制台查看sandbox-manager的网关，获取ALB的访问端点，格式为alb-xxx, 自行配置到域名的DNS解析    
+  ACS控制台地址:
+    Value:
+      Fn::Sub:
+        - "https://acs.console.aliyun.com/v2?#/next/clusters/${ClusterId}/ingress?ns=sandbox-system"
+        - ClusterId:
+            Fn::GetAtt:
+              - AckOrAcsCluster
+              - ClusterId
   ClusterId:
     Label:
       zh-cn: 集群ID
@@ -1076,21 +974,6 @@ Outputs:
       Fn::GetAtt:
         - AckOrAcsCluster
         - ClusterId
-  Introduction:
-    Label:
-      zh-cn: 部署说明
-      en: Deployment Instructions
-    Description:
-      zh-cn: 部署完成后的操作指引
-      en: Post-deployment operation guide
-    Value: |
-      【OpenClaw 访问配置指引】
-      
-      1. 参考文档安装ACK Extend Network Controller组件：
-      
-      2. 当Pod具备EIP后通过以下方式访问：
-    
-      3. 访问地址：http://<EXTERNAL-IP>:18789/?token=<OpenClawGatewayToken>
   E2B_API_KEY:
     Label: 访问E2B API的E2B_API_KEY
     Value:
@@ -1100,19 +983,13 @@ Outputs:
     Label: 访问E2B API的域名
     Value:
       Ref: E2BDomainAddress
-  OpenClawGatewayToken:
-    Label:
-      zh-cn: OpenClaw访问Token
-      en: OpenClaw Gateway Token
-    Value:
-      Ref: OpenClawGatewayToken
-      NoEcho: true  
 
 Metadata:
   ALIYUN::ROS::Interface:
     Hidden:
       - ClusterOption
       - OpenClawImage
+      - OpenClawReplicas
     ParameterGroups:
       - Parameters:
           - ClusterOption
@@ -1155,7 +1032,6 @@ Metadata:
       - Parameters:
           - BaiLianApiKey
           - OpenClawGatewayToken
-          - OpenClawReplicas
         Label:
           en: OpenClaw Configuration
           zh-cn: OpenClaw 配置
