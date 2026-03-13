@@ -1,0 +1,32 @@
+.env
+
+# IDE
+.idea/
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Temp files
+bak/
+.d-connect/
+
+# Sensitive files
+fullchain.pem
+privkey.pem
+parameters*.yaml
+
+# Test files
+test-*.yaml
+
+# Reference/backup files
+*_ref.yaml
+*-fixed.yaml
+template_*.yaml
+sandboxset-*.yaml
+openclaw-*.yaml
+
+# Other docs (keep docs/ only)
+*.md
+!docs/*.md
