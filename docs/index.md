@@ -66,7 +66,7 @@ Examples:
     
     1.  TLS 证书选择fullchain.pem文件
         
-    2.  TLS 证书私钥选择privkey.pem文件 ![image.png](test1-1.png)
+    2.  TLS 证书私钥选择privkey.pem文件   ![img_7.png](img_7.png)
         
     
     
