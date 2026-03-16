@@ -10,7 +10,7 @@ from e2b_code_interpreter import Sandbox
 
 def main():
     print("Hello from openclaw-demo!")
-    load_dotenv()
+    load_dotenv(override=True)
 
     # 步骤1: 创建 sandbox
     print("\n[步骤1] 创建 sandbox...")
