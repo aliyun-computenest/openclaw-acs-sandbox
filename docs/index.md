@@ -209,10 +209,18 @@ spec:
 
 ![image.png](https://alidocs.oss-cn-zhangjiakou.aliyuncs.com/res/8oLl952z0kPRylap/img/1105d2f3-13a3-48e1-b12a-b4cdf057ec64.png)
 
-## 服务部署验证
+# 服务部署验证
 
 部署完成后，会得到一个对应的ACS集群，ACS集群中在sandbox-system命名空间下有sandbox-manager的Deployment，用于管理沙箱。 通过以下流程验证E2B服务已经正常运行，并介绍沙箱使用Demo.
+该部分分为自动化测试和手动测试可选其中一种测试步骤验证核心功能，两种测试方式验证的功能一致，均包含沙箱创建，休眠和重新连接部分。
+##  自动化测试
+1. 点击计算巢服务实例，找到实例内包含的acs的集群。![img_8.png](img_8.png)
+2. 点击集群容器组界面，找到acs-test-pod，点击终端登录![img_9.png](img_9.png)
+3. 执行 python testopenclaw.py
+4. 等待脚本验证所有功能通过
 
+
+## 手动测试
 ### 配置域名的解析
 
 #### 本地配置Host: 用于快速验证
@@ -250,6 +258,7 @@ curl --cacert ca-fullchain.pem -X POST --location "https://api.agent-vpc.infra/s
 ```
 
 当返回结果的json中，存在 "sandboxID" 且 "state":"running"，可以认为e2b服务已运行
+
 
 ### 通过e2b sdk创建一个沙箱
 
