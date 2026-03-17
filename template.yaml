@@ -426,7 +426,7 @@ Parameters:
     Description:
       en: Please enter a valid domain name
       zh-cn: 请输入有效的域名
-    AllowedPattern: ^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z]{2,})+$
+    AllowedPattern: ^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z0-9-]{1,63}(?<!-))+$
     Default: agent-vpc.infra
   EnablePrivateZone:
     Type: Boolean
