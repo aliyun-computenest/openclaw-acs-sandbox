@@ -11,6 +11,10 @@ Conditions:
     Fn::Equals:
       - true
       - Ref: EnablePrivateZone
+  EnablePublicIpConditions:
+    Fn::Equals:
+      - true
+      - Ref: EnablePublicIp
 Parameters:
   ZoneId1:
     Type: String
@@ -564,6 +568,23 @@ Parameters:
                   - ap-northeast-1
                 - ${RegionId}
           Value: registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2
+  EnablePublicIp:
+    Type: Boolean
+    Description:
+      en: Access sandbox-manager via the public network. (Alb enable the public ip)
+      zh-cn: 通过公网访问sandbox-manager.(Alb 开启公网访问)
+    Label:
+      en: Whether to enable the public ip.
+      zh-cn: 是否支持公网访问
+    Default: true
+  EnablePrivateZone:
+    Type: Boolean
+    Description:
+      zh-cn: 若需要内网访问，需要通过PrivateZone配置内网域名解析,打开此配置，会自动创建privateZone, 并设置内网权威域名的生效范围为所选的VPC.
+    Label:
+      zh-cn: 是否配置内网域名解析
+      en: Weather to enable the configuration for internal network domain name resolution
+    Default: true
 Resources:
   VpcModule:
     Type: MODULE::ACS::ComputeNest::VpcAndVSwitch
@@ -661,7 +682,7 @@ Resources:
         - Name: alb-ingress-controller
           Config:
             Fn::Sub:
-              - '{"albIngress":{"AddressType":"Internet","ZoneMappings":{"${ZoneId1}":["${VswitchId1}"],"${ZoneId2}":["${VswitchId2}"]},"CreateDefaultALBConfig":true}}'
+              - '{"albIngress":{"AddressType":"${AddressType}","ZoneMappings":{"${ZoneId1}":["${VswitchId1}"],"${ZoneId2}":["${VswitchId2}"]},"CreateDefaultALBConfig":true}}'
               - ZoneId1:
                   Ref: ZoneId1
                 VswitchId1:
@@ -674,6 +695,11 @@ Resources:
                   Fn::GetAtt:
                     - VpcModule
                     - VSwitchIdSecondary
+                AddressType:
+                  Fn::If:
+                    - EnablePublicIpConditions
+                    - Internet
+                    - Intranet
   # Step 2: 等待 ALB Ingress 就绪
   AlbIngressSleep:
     Type: ALIYUN::ROS::Sleep
@@ -685,7 +711,11 @@ Resources:
     Type: DATASOURCE::ALB::LoadBalancers
     DependsOn: AddonSleep
     Properties:
-      AddressType: Internet
+      AddressType:
+        Fn::If:
+          - EnablePublicIpConditions
+          - Internet
+          - Intranet
       VpcIds:
         - Fn::GetAtt:
             - VpcModule
@@ -1163,6 +1193,7 @@ Metadata:
           - AdminApiKey
           - SandboxManagerCpu
           - SandboxManagerMemory
+          - EnablePublicIp
         Label:
           en: E2B  Configuration
           zh-cn: E2B 配置

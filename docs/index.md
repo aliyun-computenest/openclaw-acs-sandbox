@@ -73,10 +73,12 @@ Examples:
 4.  会生成访问E2B API的 E2B\_API\_KEY
     
 5.  sandbox-manager 组件默认的CPU和内存配置默认为2C, 4Gi, 可以按需调整
+
+7. 如果需要内网alb，请关闭此项。![img_10.png](img_10.png)
     
-6.  配置完成后，点击确认订单
+8. 配置完成后，点击确认订单
     
-7.  部署成功后，在服务实例的详情页也可以查看E2B\_API\_KEY、E2B\_DOMAIN等信息 
+9. 部署成功后，在服务实例的详情页也可以查看E2B\_API\_KEY、E2B\_DOMAIN等信息 
     
 
 ![image.png](https://alidocs.oss-cn-zhangjiakou.aliyuncs.com/res/8oLl952z0kPRylap/img/0d7faeee-7052-4226-a2ca-38f8f3606dcc.png)
