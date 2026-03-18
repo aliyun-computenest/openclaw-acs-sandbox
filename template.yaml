@@ -15,6 +15,10 @@ Conditions:
     Fn::Equals:
       - true
       - Ref: EnablePublicIp
+  UseCustomAlbVSwitchCondition:
+    Fn::Equals:
+      - true
+      - Ref: EnableCustomAlbVSwitch
 Parameters:
   ZoneId1:
     Type: String
@@ -198,6 +202,67 @@ Parameters:
           Fn::Equals:
             - ExistingVPC
             - ${VpcOption}
+  EnableCustomAlbVSwitch:
+    Type: Boolean
+    Label:
+      en: Use dedicated VSwitch for ALB
+      zh-cn: 为 ALB 指定独立交换机
+    Description:
+      zh-cn: 开启后可为 ALB 单独指定交换机，与集群节点交换机隔离。仅在已有VPC场景下生效。
+      en: When enabled, you can specify dedicated VSwitches for ALB, isolated from cluster node VSwitches. Only effective in ExistingVPC scenario.
+    Default: false
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
+  AlbVSwitchId1:
+    Type: String
+    Label:
+      en: ALB VSwitch ID (Zone 1)
+      zh-cn: ALB 交换机ID（可用区1）
+    Description:
+      en: Dedicated VSwitch for ALB in Zone 1. Must belong to the same VPC but can be different from cluster VSwitches.
+      zh-cn: ALB 在可用区1使用的专用交换机，须属于同一VPC，可与集群节点交换机不同。
+    Required: false
+    Default: null
+    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    AssociationPropertyMetadata:
+      VpcId: '${VpcId}'
+      ZoneId: '${ZoneId1}'
+      Visible:
+        Condition:
+          Fn::And:
+            - Fn::Equals:
+                - ExistingVPC
+                - ${VpcOption}
+            - Fn::Equals:
+                - true
+                - ${EnableCustomAlbVSwitch}
+  AlbVSwitchId2:
+    Type: String
+    Label:
+      en: ALB VSwitch ID (Zone 2)
+      zh-cn: ALB 交换机ID（可用区2）
+    Description:
+      en: Dedicated VSwitch for ALB in Zone 2. Must belong to the same VPC but can be different from cluster VSwitches.
+      zh-cn: ALB 在可用区2使用的专用交换机，须属于同一VPC，可与集群节点交换机不同。
+    Required: false
+    Default: null
+    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    AssociationPropertyMetadata:
+      VpcId: '${VpcId}'
+      ZoneId: '${ZoneId2}'
+      Visible:
+        Condition:
+          Fn::And:
+            - Fn::Equals:
+                - ExistingVPC
+                - ${VpcOption}
+            - Fn::Equals:
+                - true
+                - ${EnableCustomAlbVSwitch}
   VpcCidrBlock:
     Type: String
     Label:
@@ -261,6 +326,7 @@ Parameters:
       en: Service CIDR
     AssociationProperty: ALIYUN::CS::ManagedKubernetesCluster::ServiceCidr
     AssociationPropertyMetadata:
+      ContainerCidr: 172.20.0.0/20
       VpcId: ${VpcId}
       RegionId: ${RegionId}
       ClusterType: ManagedKubernetes
@@ -686,15 +752,21 @@ Resources:
               - ZoneId1:
                   Ref: ZoneId1
                 VswitchId1:
-                  Fn::GetAtt:
-                    - VpcModule
-                    - VSwitchId
+                  Fn::If:
+                    - UseCustomAlbVSwitchCondition
+                    - Ref: AlbVSwitchId1
+                    - Fn::GetAtt:
+                        - VpcModule
+                        - VSwitchId
                 ZoneId2:
                   Ref: ZoneId2
                 VswitchId2:
-                  Fn::GetAtt:
-                    - VpcModule
-                    - VSwitchIdSecondary
+                  Fn::If:
+                    - UseCustomAlbVSwitchCondition
+                    - Ref: AlbVSwitchId2
+                    - Fn::GetAtt:
+                        - VpcModule
+                        - VSwitchIdSecondary
                 AddressType:
                   Fn::If:
                     - EnablePublicIpConditions
@@ -1164,6 +1236,9 @@ Metadata:
           - VpcId
           - VSwitchId1
           - VSwitchId2
+          - EnableCustomAlbVSwitch
+          - AlbVSwitchId1
+          - AlbVSwitchId2
           - VpcCidrBlock
           - VSwitchCidrBlock1
           - VSwitchCidrBlock2

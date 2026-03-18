@@ -506,6 +506,97 @@ def save_kubeconfig(kubeconfig: str, output_path: str = None) -> str:
     return output_path
 
 
+def find_conflicting_privatezone(zone_name: str, vpc_id: str, region_id: str) -> Optional[Dict[str, Any]]:
+    """
+    检测指定 VPC 下是否已绑定同名 PrivateZone。
+
+    使用 DescribeZones 的 QueryVpcId 参数直接按 VPC 过滤，一次调用即可完成检测。
+    PrivateZone 限制：同一 VPC 内不能绑定两个同名 Zone（ZoneVpc.Zone.Repeated）。
+    在 ExistingVPC 场景下，旧 Stack 删除后 Zone 可能残留并仍绑定着该 VPC，
+    导致新 Stack 创建时 PrivateZoneVpcBinder 失败。
+
+    Returns:
+        冲突的 Zone 信息字典（含 ZoneId、ZoneName），无冲突时返回 None
+    """
+    result = run_aliyun_cli([
+        "aliyun", "pvtz", "DescribeZones",
+        "--RegionId", region_id,
+        "--SearchMode", "EXACT",
+        "--Keyword", zone_name,
+        "--QueryVpcId", vpc_id,
+        "--QueryRegionId", region_id,
+        "--PageSize", "10",
+    ])
+    if "error" in result:
+        print(f"[预检] 查询 PrivateZone 失败（跳过预检）: {result['error']}")
+        return None
+
+    zones = result.get("Zones", {}).get("Zone", [])
+    for zone in zones:
+        if zone.get("ZoneName") == zone_name:
+            return {"ZoneId": zone["ZoneId"], "ZoneName": zone["ZoneName"]}
+    return None
+
+
+def unbind_privatezone_vpc(zone_id: str, vpc_id: str, region_id: str) -> bool:
+    """
+    解绑 PrivateZone 与指定 VPC 的绑定关系。
+
+    通过传入空 Vpcs 列表实现全量解绑（BindZoneVpc 是覆盖语义）。
+    用于清理旧 Stack 残留的 Zone-VPC 绑定，避免新 Stack 创建时报 ZoneVpc.Zone.Repeated。
+
+    Returns:
+        True 表示解绑成功，False 表示失败
+    """
+    result = run_aliyun_cli([
+        "aliyun", "pvtz", "BindZoneVpc",
+        "--RegionId", region_id,
+        "--ZoneId", zone_id,
+        "--Vpcs", "[]",
+    ])
+    if "error" in result:
+        print(f"[预检] 解绑 PrivateZone VPC 失败: {result['error']}")
+        return False
+    return True
+
+
+def precheck_privatezone_conflicts(parameters: List[Dict[str, str]], region_id: str):
+    """
+    在创建 Stack 前预检 PrivateZone VPC 绑定冲突，并自动清理。
+
+    触发条件（同时满足）：
+    - EnablePrivateZone 参数为 true
+    - VpcId 参数有值（ExistingVPC 场景）
+    - E2BDomainAddress 对应的 PrivateZone 已绑定该 VPC
+
+    检测到冲突时自动解绑旧的 Zone-VPC 绑定，让新 Stack 可以重新绑定。
+    """
+    param_map = {p["ParameterKey"]: p["ParameterValue"] for p in parameters}
+
+    enable_private_zone = param_map.get("EnablePrivateZone", "false").lower()
+    vpc_id = param_map.get("VpcId", "")
+    zone_name = param_map.get("E2BDomainAddress", "")
+
+    if enable_private_zone != "true" or not vpc_id or not zone_name:
+        return
+
+    print(f"\n[预检] 检测 PrivateZone 冲突: 域名={zone_name}, VPC={vpc_id}")
+    conflict = find_conflicting_privatezone(zone_name, vpc_id, region_id)
+
+    if not conflict:
+        print(f"[预检] 未发现冲突，继续创建 Stack")
+        return
+
+    zone_id = conflict["ZoneId"]
+    print(f"[预检] 发现冲突: Zone '{zone_name}' (ZoneId={zone_id}) 已绑定 VPC {vpc_id}")
+    print(f"[预检] 自动解绑旧 Zone-VPC 绑定...")
+
+    if unbind_privatezone_vpc(zone_id, vpc_id, region_id):
+        print(f"[预检] 解绑成功，继续创建 Stack")
+    else:
+        print(f"[预检] 解绑失败，Stack 创建可能会因 ZoneVpc.Zone.Repeated 报错")
+
+
 def cmd_create(args, region_id: str):
     """执行 create 子命令"""
     template_body = load_template(args.template)
@@ -526,6 +617,9 @@ def cmd_create(args, region_id: str):
         if skipped_params:
             print(f"跳过不在模板中定义的参数: {', '.join(skipped_params)}")
         parameters = filtered_params
+
+    # 预检：PrivateZone VPC 绑定冲突（ExistingVPC 场景下旧 Stack 残留问题）
+    precheck_privatezone_conflicts(parameters, region_id)
 
     print(f"模板文件: {args.template}")
     print(f"参数文件: {args.parameters or '(无)'}")
