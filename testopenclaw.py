@@ -1,4 +1,4 @@
-# ⚠️  声明：本脚本仅用于测试场景临时验证，禁止用于生产环境。
+# ⚠️  声明：本脚本仅用于测试场景临时验证，禁止用于生产环境。集群测试pod运行
 # WARNING: This script is for temporary testing/validation purposes only.
 #          DO NOT use in production environments.
 

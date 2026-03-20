@@ -992,10 +992,9 @@ Resources:
       VSwitchName:
         Fn::Sub: openclaw-vsw3-${ALIYUN::StackName}
 
-  # ==================== OpenClaw 安全组（集群 + PodNetworking 共用） ====================
-  # 在集群创建之前创建，通过 ACK SecurityGroupId 属性注册为集群 SG
-  # ACS 模式下 PodNetworking 必须使用集群自身的 SG，否则 Pod 无法连通 API Server
-  # egress 网络隔离由 TrafficPolicy / GlobalTrafficPolicy 负责，安全组仅做入方向访问控制
+  # ==================== ACK 集群安全组（normal 类型） ====================
+  # normal 安全组作为 ACK 集群安全组，让 ACK 自动管理基础规则
+  # normal 安全组默认同组内互通（InnerAccessPolicy=Accept），保证集群组件正常运行
   OpenClawSecurityGroup:
     Type: ALIYUN::ECS::SecurityGroup
     Properties:
@@ -1007,59 +1006,217 @@ Resources:
               - VpcId
           - Ref: VpcId
       SecurityGroupName:
-        Fn::Sub: openclaw-sg-${ALIYUN::StackName}
-      Description: OpenClaw 集群安全组（normal类型），同时作为 ACK 集群 SG 和 PodNetworking SG
-      SecurityGroupType: normal
-      # ---- 入方向：仅允许 downstream（业务 VSwitch 网段）全端口访问 ----
-      # 新建 VPC：使用参数中的 VSwitchCidrBlock1/2/3
-      # 已有 VPC：通过 DATASOURCE 动态查询 VSwitch CIDR，避免放行整个 VPC 网段
+        Fn::Sub: openclaw-cluster-sg-${ALIYUN::StackName}
+      Description: ACK 集群安全组（normal类型），保证集群基础组件正常运行
       SecurityGroupIngress:
-        - IpProtocol: all
-          PortRange: -1/-1
+        - IpProtocol: tcp
+          PortRange: 6443/6443
+          SourceCidrIp:
+            Ref: OpenClawCidrBlock
+          Priority: 1
+          Description: 允许OpenClaw Pod网段访问API Server 6443
+        - IpProtocol: tcp
+          PortRange: 9082/9082
+          SourceCidrIp:
+            Ref: OpenClawCidrBlock
+          Priority: 1
+          Description: 允许OpenClaw Pod网段访问Poseidon 9082
+
+  # ==================== OpenClaw Pod 隔离安全组（enterprise 类型） ====================
+  # enterprise 安全组仅用于 OpenClaw Pod（通过 PodNetworking CRD 关联）
+  # InnerAccessPolicy=Drop，同安全组内实例之间默认不互通，实现 Pod 间网络隔离
+  # 参考：https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/configure-security-group-rules-to-enforce-access-control-on-ack-clusters
+  OpenClawIsolationSecurityGroup:
+    Type: ALIYUN::ECS::SecurityGroup
+    Properties:
+      VpcId:
+        Fn::If:
+          - CreateNewVpcCondition
+          - Fn::GetAtt:
+              - Vpc
+              - VpcId
+          - Ref: VpcId
+      SecurityGroupName:
+        Fn::Sub: openclaw-isolation-sg-${ALIYUN::StackName}
+      Description: OpenClaw Pod 隔离安全组（enterprise类型），通过 PodNetworking 关联到 OpenClaw Pod
+      SecurityGroupType: enterprise
+      # ---- 入方向规则 ----
+      SecurityGroupIngress:
+        # 允许 VPC 主网段全端口访问（API Server、kubelet 健康检查等）
+        - IpProtocol: tcp
+          PortRange: 1/65535
           SourceCidrIp:
             Fn::If:
               - CreateNewVpcCondition
-              - Ref: VSwitchCidrBlock1
+              - Ref: VpcCidrBlock
               - Fn::Jq:
                   - First
-                  - '.[0].CidrBlock'
+                  - .CidrBlock
                   - Fn::GetAtt:
-                      - BusinessVSwitch1DataSource
-                      - VSwitches
+                      - VpcDataSource
+                      - Vpcs
           Priority: 1
-          Description: 允许 downstream 网段（业务VSwitch1/gateway/sandbox-manager）全端口访问
-        - IpProtocol: all
-          PortRange: -1/-1
+          Description: 允许VPC主网段TCP全端口访问
+        - IpProtocol: udp
+          PortRange: 1/65535
           SourceCidrIp:
             Fn::If:
               - CreateNewVpcCondition
-              - Ref: VSwitchCidrBlock2
+              - Ref: VpcCidrBlock
               - Fn::Jq:
                   - First
-                  - '.[0].CidrBlock'
+                  - .CidrBlock
                   - Fn::GetAtt:
-                      - BusinessVSwitch2DataSource
-                      - VSwitches
+                      - VpcDataSource
+                      - Vpcs
           Priority: 1
-          Description: 允许 downstream 网段（业务VSwitch2）全端口访问
-        - IpProtocol: all
-          PortRange: -1/-1
+          Description: 允许VPC主网段UDP全端口访问
+        # 允许 OpenClaw 附加 CIDR 网段（kubelet 健康检查等）
+        - IpProtocol: tcp
+          PortRange: 1/65535
           SourceCidrIp:
+            Ref: OpenClawCidrBlock
+          Priority: 1
+          Description: 允许OpenClaw附加CIDR TCP(kubelet健康检查)
+        - IpProtocol: udp
+          PortRange: 1/65535
+          SourceCidrIp:
+            Ref: OpenClawCidrBlock
+          Priority: 1
+          Description: 允许OpenClaw附加CIDR UDP
+        # 允许云产品网段（100.64.0.0/10，含 metadata/DNS/ACR/SLB 等）
+        - IpProtocol: tcp
+          PortRange: 1/65535
+          SourceCidrIp: 100.64.0.0/10
+          Priority: 1
+          Description: 允许云产品网段TCP(metadata/DNS/ACR/SLB)
+        - IpProtocol: udp
+          PortRange: 1/65535
+          SourceCidrIp: 100.64.0.0/10
+          Priority: 1
+          Description: 允许云产品网段UDP(metadata/DNS/ACR/SLB)
+      # ---- 出方向规则 ----
+      # enterprise 安全组默认拒绝所有出方向，必须显式放行
+      SecurityGroupEgress:
+        # 允许云产品网段（100.64.0.0/10，含 metadata/DNS/ACR/SLB 等）
+        - IpProtocol: tcp
+          PortRange: 1/65535
+          DestCidrIp: 100.64.0.0/10
+          Priority: 1
+          Description: 允许云产品网段TCP(metadata/DNS/ACR/SLB)
+        - IpProtocol: udp
+          PortRange: 1/65535
+          DestCidrIp: 100.64.0.0/10
+          Priority: 1
+          Description: 允许云产品网段UDP(metadata/DNS/ACR/SLB)
+        # 允许访问 API Server 6443（VPC 主网段）
+        - IpProtocol: tcp
+          PortRange: 6443/6443
+          DestCidrIp:
             Fn::If:
               - CreateNewVpcCondition
-              - Ref: VSwitchCidrBlock3
+              - Ref: VpcCidrBlock
               - Fn::Jq:
                   - First
-                  - '.[0].CidrBlock'
+                  - .CidrBlock
                   - Fn::GetAtt:
-                      - BusinessVSwitch3DataSource
-                      - VSwitches
-          Priority: 1
-          Description: 允许 downstream 网段（业务VSwitch3）全端口访问
-      # ---- 出方向：normal 类型安全组默认允许所有出方向流量 ----
-      # egress 网络隔离由 TrafficPolicy / GlobalTrafficPolicy 在 Poseidon 层面实现
-      # 不在安全组中配置 DROP 规则，避免与 PodNetworking + ACS 模式冲突
-      SecurityGroupEgress: []
+                      - VpcDataSource
+                      - Vpcs
+          Priority: 2
+          Description: 允许访问API Server 6443(VPC主网段)
+        # 允许访问 API Server 6443（ServiceCIDR）
+        - IpProtocol: tcp
+          PortRange: 6443/6443
+          DestCidrIp:
+            Ref: ServiceCidr
+          Priority: 2
+          Description: 允许访问API Server 6443(ServiceCIDR)
+        # 允许访问 Poseidon 9082（VPC 主网段）
+        - IpProtocol: tcp
+          PortRange: 9082/9082
+          DestCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: VpcCidrBlock
+              - Fn::Jq:
+                  - First
+                  - .CidrBlock
+                  - Fn::GetAtt:
+                      - VpcDataSource
+                      - Vpcs
+          Priority: 2
+          Description: 允许访问Poseidon 9082(VPC主网段)
+        # 允许 kubelet 通信（VPC 主网段）
+        - IpProtocol: tcp
+          PortRange: 10250/10255
+          DestCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: VpcCidrBlock
+              - Fn::Jq:
+                  - First
+                  - .CidrBlock
+                  - Fn::GetAtt:
+                      - VpcDataSource
+                      - Vpcs
+          Priority: 2
+          Description: 允许kubelet通信TCP(VPC主网段)
+        # 允许 kube-dns（ServiceCIDR）
+        - IpProtocol: tcp
+          PortRange: 53/53
+          DestCidrIp:
+            Ref: ServiceCidr
+          Priority: 2
+          Description: 允许kube-dns TCP
+        - IpProtocol: udp
+          PortRange: 53/53
+          DestCidrIp:
+            Ref: ServiceCidr
+          Priority: 2
+          Description: 允许kube-dns UDP
+        # 允许 VPC 内 DNS
+        - IpProtocol: tcp
+          PortRange: 53/53
+          DestCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: VpcCidrBlock
+              - Fn::Jq:
+                  - First
+                  - .CidrBlock
+                  - Fn::GetAtt:
+                      - VpcDataSource
+                      - Vpcs
+          Priority: 2
+          Description: 允许VPC内DNS TCP
+        - IpProtocol: udp
+          PortRange: 53/53
+          DestCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: VpcCidrBlock
+              - Fn::Jq:
+                  - First
+                  - .CidrBlock
+                  - Fn::GetAtt:
+                      - VpcDataSource
+                      - Vpcs
+          Priority: 2
+          Description: 允许VPC内DNS UDP
+        # ---- 以下为公网出方向（enterprise 安全组默认 Drop，未放行的流量自动拒绝） ----
+        # 注意：不使用显式 drop 规则，因为 ECI 底层初始化通信会被 drop 规则阻断
+        # enterprise 安全组 InnerAccessPolicy=Drop 已天然实现 Pod 间隔离
+        # 允许公网访问（通过 NAT 网关出去，优先级最低）
+        - IpProtocol: tcp
+          PortRange: 1/65535
+          DestCidrIp: 0.0.0.0/0
+          Priority: 100
+          Description: 允许公网TCP
+        - IpProtocol: udp
+          PortRange: 1/65535
+          DestCidrIp: 0.0.0.0/0
+          Priority: 100
+          Description: 允
 
   # ==================== ACK 集群 + VirtualNode ====================
   Sleep:
@@ -1362,6 +1519,8 @@ Resources:
       Addons:
         - Name: ack-agent-sandbox-controller
           Config: '{"workers":{"sandboxWorkers":200,"sandboxsetWorkers":10,"sandboxclaimWorkers":200},"featureGate":""}'
+          Version: 'v0.5.6'
+
   # Step 5: Sandbox Manager
   SandboxManagerAddon:
     Type: ALIYUN::CS::ClusterAddons
@@ -1374,6 +1533,7 @@ Resources:
       InstalledIgnore: true
       Addons:
         - Name: ack-sandbox-manager
+          Version: 'v0.4.2'
           Config:
             Fn::Sub:
               - '{"sandboxManager":{"replicaCount":3,"acs":true,"e2b":{"domain":"${E2BDomainAddress}","enableAuth":true,"adminApiKey":"${AdminApiKey}","maxTimeout":2592000},"ingress":{"className":"alb"},"controller":{"resources":{"cpu":"${SandboxManagerCpu}","memory":"${SandboxManagerMemory}"},"logLevel":5,"enableSLS":true,"maxClaimWorkers":100,"maxCreateQPS":200,"createPodInsteadOfSandbox":false,"extProcMaxConcurrency":3000}}}'
@@ -1778,25 +1938,44 @@ Resources:
                       - cidr: 0.0.0.0/0
               egress:
                 rules:
+                  # 1. 拒绝访问 ECS metadata（安全加固）
                   - action: deny
                     to:
                       - cidr: 100.100.100.200/32
+                  # 2. 允许 kube-dns（K8s Service 方式，ECI 实际不走此路径）
                   - action: allow
                     to:
                       - service:
                           name: kube-dns
                           namespace: kube-system
+                  # 3. 允许 VPC DNS（ECI Pod 实际使用的 DNS 通道）
+                  - action: allow
+                    to:
+                      - cidr: 100.100.2.136/32
+                      - cidr: 100.100.2.138/32
+                  # 4. 允许阿里云内部服务网段（VPC 内网镜像仓库 100.103.x.x、VPC DNS 等）
+                  # metadata 100.100.100.200 已在规则1中 deny，此处放行不受影响
+                  - action: allow
+                    to:
+                      - cidr: 100.64.0.0/10
+                  # 5. 允许访问 VPC 主网段（Poseidon 管控面 9082、API Server 6443）
+                  - action: allow
+                    to:
+                      - cidr: ${VpcCidr}
+                  # 6. 拒绝所有其他内网访问（Pod 间隔离核心规则）
                   - action: deny
                     to:
                       - cidr: 172.16.0.0/12
                       - cidr: 192.168.0.0/16
                       - cidr: 10.0.0.0/8
-                      - cidr: 100.64.0.0/10
+                  # 6. 允许公网访问
                   - action: allow
                     to:
                       - cidr: 0.0.0.0/0
           - SandboxNamespace:
               Ref: SandboxNamespace
+            VpcCidr:
+              Ref: VpcCidrBlock
 
   # ==================== OpenClaw PodNetworking（为 ACS Pod 配置独立 VSwitch 和安全组） ====================
   # ACK VirtualNode + ACS 场景下，通过 PodNetworking CRD 将 Sandbox Pod 放到 OpenClaw 隔离 VSwitch
@@ -1832,7 +2011,7 @@ Resources:
                 - "${OpenClawVSwitchId3}"
           - OpenClawSecurityGroupId:
               Fn::GetAtt:
-                - OpenClawSecurityGroup
+                - OpenClawIsolationSecurityGroup
                 - SecurityGroupId
             OpenClawVSwitchId1:
               Fn::If:
@@ -1895,10 +2074,25 @@ Resources:
                     alibabacloud.com/acs: "true"
                   annotations:
                     ops.alibabacloud.com/pause-enabled: "true"
+                    k8s.aliyun.com/eci-network-policy-enable: "true"
+                    network.alibabacloud.com/enable-network-policy-agent: "true"
+                    network.alibabacloud.com/network-policy-mode: "traffic-policy"
                 spec:
                   restartPolicy: Always
                   automountServiceAccountToken: false
                   enableServiceLinks: false
+                  dnsPolicy: None
+                  dnsConfig:
+                    nameservers:
+                      - "100.100.2.136"
+                      - "100.100.2.138"
+                    searches:
+                      - default.svc.cluster.local
+                      - svc.cluster.local
+                      - cluster.local
+                    options:
+                      - name: ndots
+                        value: "5"
                   nodeSelector:
                     type: virtual-kubelet
                   tolerations:
@@ -2216,16 +2410,27 @@ Outputs:
             - Vpc
             - VpcId
         - Ref: VpcId
-  OpenClawSecurityGroupId:
+  ClusterSecurityGroupId:
     Label:
-      zh-cn: OpenClaw 安全组ID
-      en: OpenClaw SecurityGroup ID
+      zh-cn: ACK 集群安全组ID
+      en: ACK Cluster SecurityGroup ID
     Description:
-      zh-cn: OpenClaw 集群安全组ID（normal类型，同时作为 ACK 集群 SG 和 PodNetworking SG）
-      en: SecurityGroup ID for OpenClaw Sandbox Pods (normal type, used with PodNetworking)
+      zh-cn: ACK 集群安全组ID（normal类型，用于集群基础组件和 VirtualNode）
+      en: SecurityGroup ID for ACK cluster (normal type, used for cluster components and VirtualNode)
     Value:
       Fn::GetAtt:
         - OpenClawSecurityGroup
+        - SecurityGroupId
+  OpenClawIsolationSecurityGroupId:
+    Label:
+      zh-cn: OpenClaw Pod 隔离安全组ID
+      en: OpenClaw Pod Isolation SecurityGroup ID
+    Description:
+      zh-cn: OpenClaw Pod 隔离安全组ID（enterprise类型，通过 PodNetworking 关联，实现 Pod 间网络隔离）
+      en: SecurityGroup ID for OpenClaw Pod isolation (enterprise type, associated via PodNetworking)
+    Value:
+      Fn::GetAtt:
+        - OpenClawIsolationSecurityGroup
         - SecurityGroupId
   E2B_API_KEY:
     Label: 访问E2B API的E2B_API_KEY
