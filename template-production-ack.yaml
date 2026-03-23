@@ -28,6 +28,35 @@ Conditions:
           - ExistingVPC
           - Ref: VpcOption
 Parameters:
+  # ==================== 前置确认 ====================
+  WhitelistConfirmation:
+    Type: "String"
+    Label:
+      en: "Whitelist Confirmation"
+      zh-cn: "白名单配置确认"
+    AssociationProperty: "AlertCheckbox"
+    Default: false
+    AssociationPropertyMetadata:
+      Description:
+        zh-cn: |
+          使用本服务前，请确保已为当前阿里云账号（UID）和部署 Region 完成 Poseidon 组件的白名单配置。白名单开通方式：
+
+          <br/>
+          1. 提交工单加白：<a href="https://smartservice.console.aliyun.com/service/create-ticket" target="_blank">提交工单</a>
+        en: |
+          <strong>Important Prerequisite:</strong>
+          Before using this service, please ensure that the Poseidon component whitelist has been configured for your Alibaba Cloud account (UID) and deployment Region. Whitelist activation methods:
+          <br/>
+          1. Join DingTalk group to apply for whitelist, scan QR code to join <a href="https://help-static-aliyun-doc.aliyuncs.com/assets/img/zh-CN/2837342771/p1055716.png" target="_blank">DingTalk group</a>
+          <br/>
+          2. Submit a ticket to add to whitelist: <a href="https://smartservice.console.aliyun.com/service/create-ticket" target="_blank">Submit a ticket</a>
+      ConfirmText:
+        zh-cn: "我已确认完成 Poseidon 组件白名单配置"
+        en: "I have confirmed the Poseidon component whitelist configuration"
+      Alert: true
+      Type: "warning"
+      MustChecked: true
+
   # ==================== 可用区配置（3 可用区） ====================
   ZoneId1:
     Type: String
@@ -561,7 +590,7 @@ Parameters:
   InstanceType:
     Type: CommaDelimitedList
     Default:
-      - ecs.c7.xlarge
+      - ecs.g7.2xlarge
     AssociationProperty: ALIYUN::ECS::Instance::InstanceType
     AssociationPropertyMetadata:
       CreateACKClusterParams:
@@ -574,10 +603,7 @@ Parameters:
           - ecs.c7a
           - ecs.g7a
           - ecs.r7a
-        vCPU:
-          - 4
-        Memory:
-          - 8
+
     Label:
       en: Worker Instance Type
       zh-cn: Worker 节点实例规格
@@ -2506,6 +2532,11 @@ Metadata:
       - OpenClawImage
       - OpenClawReplicas
     ParameterGroups:
+      - Parameters:
+          - WhitelistConfirmation
+        Label:
+          en: Notice Item
+          zh-cn: 注意事项
       - Parameters:
           - ZoneId1
           - ZoneId2

@@ -269,6 +269,9 @@ class NetworkValidator:
     def test_security_group_rules(self):
         print("\n=== 3. 安全组规则 ===")
         if not self.sg_id:
+            if self.is_ack:
+                print("  [跳过] ACK 集群模式下无独立 OpenClaw 安全组，安全组规则由集群统一管理")
+                return
             self.add_result("SecurityGroup", "安全组 ID 可用", False, "无安全组 ID")
             return
 
@@ -924,25 +927,26 @@ class NetworkValidator:
         )
         eni_id = eni_id.strip("'")
         if eni_id:
-            rc2, out2, _ = self.aliyun_cli(
-                f"ecs DescribeNetworkInterfaces --RegionId {self.region} "
-                f"--NetworkInterfaceId.1 {eni_id}"
-            )
-            if rc2 == 0:
-                try:
-                    eni_data = json.loads(out2)
-                    enis = eni_data.get("NetworkInterfaceSets", {}).get("NetworkInterfaceSet", [])
-                    if enis:
-                        eni_sgs = enis[0].get("SecurityGroupIds", {}).get("SecurityGroupId", [])
-                        custom_sg_applied = self.sg_id in eni_sgs if self.sg_id else False
-                        self.add_result("NetTest", "ENI 已应用自定义安全组",
-                                        custom_sg_applied,
-                                        f"ENI 安全组: {eni_sgs}, 预期: {self.sg_id}"
-                                        + (" [ACS 忽略 k8s.aliyun.com/eni-security-group-id 注解]"
-                                           if not custom_sg_applied else ""),
-                                        severity="P0")
-                except (json.JSONDecodeError, KeyError):
-                    pass
+            if self.is_ack and not self.sg_id:
+                print("  [跳过] ACK 集群模式下无独立 OpenClaw 安全组，跳过 ENI 安全组验证")
+            else:
+                rc2, out2, _ = self.aliyun_cli(
+                    f"ecs DescribeNetworkInterfaces --RegionId {self.region} "
+                    f"--NetworkInterfaceId.1 {eni_id}"
+                )
+                if rc2 == 0:
+                    try:
+                        eni_data = json.loads(out2)
+                        enis = eni_data.get("NetworkInterfaceSets", {}).get("NetworkInterfaceSet", [])
+                        if enis:
+                            eni_sgs = enis[0].get("SecurityGroupIds", {}).get("SecurityGroupId", [])
+                            custom_sg_applied = self.sg_id in eni_sgs if self.sg_id else False
+                            self.add_result("NetTest", "ENI 已应用自定义安全组",
+                                            custom_sg_applied,
+                                            f"ENI 安全组: {eni_sgs}, 预期: {self.sg_id}",
+                                            severity="P0")
+                    except (json.JSONDecodeError, KeyError):
+                        pass
 
     # ==================== 7b. Sandbox 互访隔离 ====================
     def test_sandbox_inter_isolation(self):
