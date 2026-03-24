@@ -416,9 +416,6 @@ print(f"File content: {content}")
 
 生产级部署通过 **Poseidon 网络策略组件**和 **PodNetworking CRD** 实现 Kubernetes 层面的网络隔离。
 
-### 核心概念说明
-
-在理解网络隔离方案之前，需要先理解以下几个关键概念。这些概念来自[《网络隔离方案-生产级配置》](../production-doc/网络隔离方案-生产级配置.md)，下面说明它们在 ROS 模板中对应的参数和资源。
 
 #### 网段角色定义
 
