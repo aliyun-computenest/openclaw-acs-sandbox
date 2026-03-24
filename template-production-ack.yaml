@@ -94,6 +94,9 @@ Parameters:
       - ap-southeast-1d
       - us-east-1a
       - us-east-1b
+      - eu-central-1a
+      - eu-central-1b
+      - eu-central-1c
     AssociationPropertyMetadata:
       ExclusiveTo:
         - ZoneId2
@@ -137,6 +140,9 @@ Parameters:
       - ap-southeast-1d
       - us-east-1a
       - us-east-1b
+      - eu-central-1a
+      - eu-central-1b
+      - eu-central-1c
     AssociationPropertyMetadata:
       ExclusiveTo:
         - ZoneId1
@@ -179,6 +185,9 @@ Parameters:
       - ap-southeast-1d
       - us-east-1a
       - us-east-1b
+      - eu-central-1a
+      - eu-central-1b
+      - eu-central-1c
     AssociationPropertyMetadata:
       ExclusiveTo:
         - ZoneId1
@@ -1321,7 +1330,7 @@ Resources:
         - Name: terway-eniip
         - Name: csi-plugin
         - Name: csi-provisioner
-        - Name: logtail-ds
+        - Name: loongcollector
           Config: '{"IngressDashboardEnabled":"true"}'
       NumOfNodes: 0
       NodePools:
@@ -1532,7 +1541,7 @@ Resources:
           Value: 'True'
           Operator: Equals
           FirstMatch: true
-          Timeout: 300
+          Timeout: 600
           Stage: Create/Update
   PoseidonSleep:
     Type: ALIYUN::ROS::Sleep
@@ -1894,6 +1903,100 @@ Resources:
           - AckCluster
           - ClusterId
 
+  # ==================== LoongCollector 日志采集配置 ====================
+  LoongCollectorSeesionCR:
+    Type: "ALIYUN::CS::ClusterApplication"
+    DependsOn: "AddonSleep"
+    Properties:
+      YamlContent:
+        Fn::Sub:
+          - |
+            apiVersion: telemetry.alibabacloud.com/v1alpha1
+            kind: ClusterAliyunPipelineConfig
+            metadata:
+              name: openclaw-session-config
+            spec:
+              config:
+                aggregators: []
+                global: {}
+                inputs:
+                  - Type: input_file
+                    FilePaths:
+                      - /root/.openclaw/agents/*/sessions/*.jsonl
+                    MaxDirSearchDepth: 0
+                    FileEncoding: utf8
+                    EnableContainerDiscovery: true
+                    ContainerFilters:
+                      K8sPodRegex: ^(openclaw.*)$
+                processors:
+                  - Type: processor_parse_json_native
+                    SourceKey: content
+                flushers:
+                  - Type: flusher_sls
+                    Logstore: openclaw-session
+                sample: ''
+              logstores:
+                - encryptConf: {}
+                  name: openclaw-session
+                  productCode: openclaw_audit
+              machineGroups:
+                - name: k8s-group-${ClusterId}
+              project:
+                name: k8s-log-${ClusterId}
+          - ClusterId:
+              Fn::GetAtt:
+                - AckCluster
+                - ClusterId
+      ClusterId:
+        Fn::GetAtt:
+          - AckCluster
+          - ClusterId
+
+  LoongCollectorRuntimeCR:
+    Type: "ALIYUN::CS::ClusterApplication"
+    DependsOn: "AddonSleep"
+    Properties:
+      YamlContent:
+        Fn::Sub:
+          - |
+            apiVersion: telemetry.alibabacloud.com/v1alpha1
+            kind: ClusterAliyunPipelineConfig
+            metadata:
+              name: openclaw-runtime-config
+            spec:
+              config:
+                flushers:
+                  - Logstore: openclaw-runtime
+                    Type: flusher_sls
+                global: {}
+                inputs:
+                  - ContainerFilters:
+                      K8sPodRegex: ^(openclaw.*)$
+                    EnableContainerDiscovery: true
+                    FileEncoding: utf8
+                    FilePaths:
+                      - /tmp/openclaw/*.log
+                    MaxDirSearchDepth: 0
+                    Type: input_file
+                processors:
+                  - SourceKey: content
+                    Type: processor_parse_json_native
+              logstores:
+                - encryptConf: {}
+                  name: openclaw-runtime
+                  productCode: openclaw_gateway
+              machineGroups:
+                - name: k8s-group-${ClusterId}
+              project:
+                name: k8s-log-${ClusterId}
+          - ClusterId:
+              Fn::GetAtt:
+                - AckCluster
+                - ClusterId
+      ClusterId:
+        Fn::GetAtt:
+          - AckCluster
+          - ClusterId
 
   # ==================== TrafficPolicy 网络隔离策略 ====================
   GlobalTrafficPolicyApplication:
@@ -2211,7 +2314,7 @@ Resources:
             Ref: SandboxNamespace
           JsonPath: $.status.availableReplicas
           Operator: NotEmpty
-          Timeout: 300
+          Timeout: 600
           FirstMatch: true
 
   # ========== ALB Config Job（配置 HTTPS 443 监听器） ==========

@@ -56,6 +56,9 @@ Parameters:
       - ap-southeast-1d
       - us-east-1a
       - us-east-1b
+      - eu-central-1a
+      - eu-central-1b
+      - eu-central-1c
     AssociationPropertyMetadata:
       ExclusiveTo:
         - ZoneId2
@@ -100,6 +103,9 @@ Parameters:
       - ap-southeast-1d
       - us-east-1a
       - us-east-1b
+      - eu-central-1a
+      - eu-central-1b
+      - eu-central-1c
     AssociationPropertyMetadata:
       ExclusiveTo:
         - ZoneId1
@@ -326,6 +332,7 @@ Parameters:
       en: Service CIDR
     AssociationProperty: ALIYUN::CS::ManagedKubernetesCluster::ServiceCidr
     AssociationPropertyMetadata:
+      ContainerCidr: 172.20.0.0/20
       VpcId: ${VpcId}
       RegionId: ${RegionId}
       ClusterType: ManagedKubernetes
@@ -681,7 +688,7 @@ Resources:
     Properties:
       CreateDuration: 10
   AckOrAcsCluster:
-    Version: default
+    Version: v14
     Type: MODULE::SHARE::1853370294850618::AckOrAcsCluster
     Properties:
       KubernetesVersion: 1.32.7-aliyun.1
@@ -855,10 +862,16 @@ Resources:
                   Ref: SandboxManagerCpu
                 SandboxManagerMemory:
                   Ref: SandboxManagerMemory
-  # 等待所有 Addon 就绪
-  AddonSleep:
+  # 等待 Sandbox Addon 就绪
+  SandboxAddonSleep:
     Type: ALIYUN::ROS::Sleep
     DependsOn: SandboxManagerAddon
+    Properties:
+      CreateDuration: 60
+  # 等待所有必要 Addon 就绪
+  AddonSleep:
+    Type: ALIYUN::ROS::Sleep
+    DependsOn: SandboxAddonSleep
     Properties:
       CreateDuration: 60
   # 获取集群 Kubeconfig（用于 ALB Config Job）
@@ -1016,7 +1029,7 @@ Resources:
           Namespace: default
           JsonPath: $.status.availableReplicas
           Operator: NotEmpty
-          Timeout: 300
+          Timeout: 600
           FirstMatch: true
   # ========== ALB Config Job（配置 HTTPS 443 监听器） ==========
   EditAlbConfigServiceAccount:
@@ -1203,6 +1216,118 @@ Resources:
           - Fn::GetAtt:
               - AlbDataSource
               - LoadBalancers
+  # ========== LoongCollector 日志采集器（放在最后，避免阻塞主流程）==========
+  LoongCollectorAddon:
+    Type: ALIYUN::CS::ClusterAddons
+    DependsOn: OpenClawSandboxSet
+    Properties:
+      ClusterId:
+        Fn::GetAtt:
+          - AckOrAcsCluster
+          - ClusterId
+      InstalledIgnore: true
+      Addons:
+        - Name: alibaba-log-controller
+          Version: ''
+          Config: '{}'
+  # 等待 LoongCollector Addon 安装完成
+  LoongCollectorSleep:
+    Type: ALIYUN::ROS::Sleep
+    DependsOn: LoongCollectorAddon
+    Properties:
+      CreateDuration: 60
+  LoongCollectorSeesionCR:
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn: LoongCollectorSleep
+    Properties:
+      YamlContent:
+        Fn::Sub:
+          - |
+            apiVersion: telemetry.alibabacloud.com/v1alpha1
+            kind: ClusterAliyunPipelineConfig
+            metadata:
+              name: openclaw-session-config
+            spec:
+              config:
+                aggregators: []
+                global: {}
+                inputs:
+                  - Type: input_file
+                    FilePaths:
+                      - /root/.openclaw/agents/*/sessions/*.jsonl
+                    MaxDirSearchDepth: 0
+                    FileEncoding: utf8
+                    EnableContainerDiscovery: true
+                    ContainerFilters:
+                      K8sPodRegex: ^(openclaw.*)$
+                processors:
+                  - Type: processor_parse_json_native
+                    SourceKey: content
+                flushers:
+                  - Type: flusher_sls
+                    Logstore: openclaw-session
+                sample: ''
+              logstores:
+                - encryptConf: {}
+                  name: openclaw-session
+                  productCode: openclaw_audit
+              machineGroups:
+                - name: k8s-group-${ClusterId}
+              project:
+                name: k8s-log-${ClusterId}
+          - ClusterId:
+              Fn::GetAtt:
+                - AckOrAcsCluster
+                - ClusterId
+      ClusterId:
+        Fn::GetAtt:
+          - AckOrAcsCluster
+          - ClusterId
+  LoongCollectorRuntimeCR:
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn: LoongCollectorSleep
+    Properties:
+      YamlContent:
+        Fn::Sub:
+          - |
+            apiVersion: telemetry.alibabacloud.com/v1alpha1
+            kind: ClusterAliyunPipelineConfig
+            metadata:
+              name: openclaw-runtime-config
+            spec:
+              config:
+                flushers:
+                  - Logstore: openclaw-runtime
+                    Type: flusher_sls
+                global: {}
+                inputs:
+                  - ContainerFilters:
+                      K8sPodRegex: ^(openclaw.*)$
+                    EnableContainerDiscovery: true
+                    FileEncoding: utf8
+                    FilePaths:
+                      - /tmp/openclaw/*.log
+                    MaxDirSearchDepth: 0
+                    Type: input_file
+                processors:
+                  - SourceKey: content
+                    Type: processor_parse_json_native
+              logstores:
+                - encryptConf: {}
+                  name: openclaw-runtime
+                  productCode: openclaw_gateway
+              machineGroups:
+                - name: k8s-group-${ClusterId}
+              project:
+                name: k8s-log-${ClusterId}
+          - ClusterId:
+              Fn::GetAtt:
+                - AckOrAcsCluster
+                - ClusterId
+      ClusterId:
+        Fn::GetAtt:
+          - AckOrAcsCluster
+          - ClusterId
 Outputs:
   ALB_DNS_Name:
     Label:
