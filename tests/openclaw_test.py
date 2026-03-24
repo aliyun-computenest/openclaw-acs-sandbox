@@ -869,6 +869,178 @@ class OpenClawTestCLI:
         self.phases.append(phase)
         return phase
 
+    # ──────────── Phase 4b: Sandbox 间网络隔离测试 ────────────
+
+    def phase4b_sandbox_isolation_test(self) -> PhaseResult:
+        """通过 kubectl exec 直接验证不同 OpenClaw Pod 之间的网络隔离。
+
+        流程：扩容 SandboxSet replicas=2 → 等待两个 Pod Running →
+        kubectl exec Pod1 curl Pod2 的 80/18789/8080 → 缩回 replicas=1。
+        """
+        phase = PhaseResult(name="Sandbox 间网络隔离")
+        self._header("4b", "Sandbox 间网络隔离 — 不同 OpenClaw 实例互不可达")
+
+        if not self.args.sandbox_test:
+            self._skip("未启用 Sandbox 测试，跳过隔离验证")
+            phase.skipped += 1
+            self.phases.append(phase)
+            return phase
+
+        sandbox_ns = self.stack_params.get("SandboxNamespace", "default")
+        original_replicas = 1
+
+        # Step 1: Read current SandboxSet replicas and scale to 2
+        self._section("扩容 SandboxSet 到 2 个副本")
+        rc, out, _ = self.kubectl(
+            f"get sandboxset -n {sandbox_ns} -o jsonpath='{{.items[0].spec.replicas}}'"
+        )
+        current_replicas = out.strip("'")
+        if current_replicas and current_replicas.isdigit():
+            original_replicas = int(current_replicas)
+
+        if original_replicas >= 2:
+            self._info(f"SandboxSet 已有 {original_replicas} 个副本，无需扩容")
+        else:
+            rc, out, err = self.kubectl(
+                f"patch sandboxset openclaw -n {sandbox_ns} "
+                "--type='merge' -p '{\"spec\":{\"replicas\":2}}'"
+            )
+            if rc != 0:
+                self._fail("扩容 SandboxSet 失败", err[:200])
+                phase.failed += 1
+                self.phases.append(phase)
+                return phase
+            self._ok("SandboxSet 已扩容到 2 个副本")
+
+        # Step 2: Wait for 2 Running pods
+        self._section("等待两个 OpenClaw Pod 就绪")
+        pods_ready = False
+        for attempt in range(16):
+            rc, out, _ = self.kubectl(
+                f"get pods -n {sandbox_ns} -l app=openclaw "
+                "--field-selector=status.phase=Running "
+                "-o jsonpath='{range .items[*]}{.metadata.name} {.status.podIP}{\"\\n\"}{end}'"
+            )
+            pod_lines = [line for line in out.strip("'").strip().split("\n") if line.strip()]
+            if len(pod_lines) >= 2:
+                pods_ready = True
+                self._ok(f"两个 Pod 已就绪 ({len(pod_lines)} Running)")
+                break
+            self._info(f"等待 Pod 就绪 ({len(pod_lines)}/2)... ({attempt+1}/16)")
+            time.sleep(10)
+
+        if not pods_ready:
+            self._fail("160s 内未能等到两个 Running Pod")
+            phase.failed += 1
+            self._restore_sandboxset_replicas(sandbox_ns, original_replicas)
+            self.phases.append(phase)
+            return phase
+
+        # Step 3: Get two pod names and IPs
+        self._section("获取 Pod 名称和 IP")
+        rc, out, _ = self.kubectl(
+            f"get pods -n {sandbox_ns} -l app=openclaw "
+            "--field-selector=status.phase=Running "
+            "-o jsonpath='{range .items[*]}{.metadata.name},{.status.podIP}{\"\\n\"}{end}'"
+        )
+        pod_entries = []
+        for line in out.strip("'").strip().split("\n"):
+            line = line.strip()
+            if "," in line:
+                name, ip = line.split(",", 1)
+                if name and ip:
+                    pod_entries.append((name, ip))
+
+        if len(pod_entries) < 2:
+            self._fail(f"无法获取两个 Pod 的信息 (found={len(pod_entries)})")
+            phase.failed += 1
+            self._restore_sandboxset_replicas(sandbox_ns, original_replicas)
+            self.phases.append(phase)
+            return phase
+
+        pod1_name, pod1_ip = pod_entries[0]
+        pod2_name, pod2_ip = pod_entries[1]
+        self._ok(f"Pod1: {pod1_name} ({pod1_ip})")
+        self._ok(f"Pod2: {pod2_name} ({pod2_ip})")
+
+        # Step 4: Test network isolation — Pod1 → Pod2 on ports 80, 18789, 8080
+        self._section(f"网络隔离验证: {pod1_name} → {pod2_name}")
+        test_ports = [
+            (80, "HTTP"),
+            (18789, "Gateway"),
+            (8080, "App"),
+        ]
+
+        for port, port_name in test_ports:
+            rc, out, err = self.kubectl(
+                f"exec {pod1_name} -n {sandbox_ns} -- "
+                f"curl -s -o /dev/null -w '%{{http_code}}' "
+                f"--connect-timeout 5 http://{pod2_ip}:{port}/",
+                timeout=15,
+            )
+            http_code = out.strip("'").strip()
+            is_blocked = (
+                rc != 0
+                or http_code in ("000", "")
+                or "exit code 28" in err
+                or "timed out" in err.lower()
+            )
+            if is_blocked:
+                self._ok(f"{port_name} 端口 {port}: 不可达 (隔离生效)", f"code={http_code}")
+                phase.passed += 1
+            else:
+                self._fail(
+                    f"{port_name} 端口 {port}: 可达! (安全风险)",
+                    f"HTTP {http_code}",
+                )
+                phase.failed += 1
+
+        # Step 5: Reverse test — Pod2 → Pod1
+        self._section(f"网络隔离验证: {pod2_name} → {pod1_name}")
+        for port, port_name in test_ports:
+            rc, out, err = self.kubectl(
+                f"exec {pod2_name} -n {sandbox_ns} -- "
+                f"curl -s -o /dev/null -w '%{{http_code}}' "
+                f"--connect-timeout 5 http://{pod1_ip}:{port}/",
+                timeout=15,
+            )
+            http_code = out.strip("'").strip()
+            is_blocked = (
+                rc != 0
+                or http_code in ("000", "")
+                or "exit code 28" in err
+                or "timed out" in err.lower()
+            )
+            if is_blocked:
+                self._ok(f"{port_name} 端口 {port}: 不可达 (隔离生效)", f"code={http_code}")
+                phase.passed += 1
+            else:
+                self._fail(
+                    f"{port_name} 端口 {port}: 可达! (安全风险)",
+                    f"HTTP {http_code}",
+                )
+                phase.failed += 1
+
+        # Step 6: Restore original replicas
+        self._restore_sandboxset_replicas(sandbox_ns, original_replicas)
+
+        self.phases.append(phase)
+        return phase
+
+    def _restore_sandboxset_replicas(self, namespace: str, replicas: int):
+        """将 SandboxSet 缩回原始副本数。"""
+        if replicas >= 2:
+            return
+        self._section(f"恢复 SandboxSet 副本数为 {replicas}")
+        rc, _, err = self.kubectl(
+            f"patch sandboxset openclaw -n {namespace} "
+            f"--type='merge' -p '{{\"spec\":{{\"replicas\":{replicas}}}}}'"
+        )
+        if rc == 0:
+            self._ok(f"SandboxSet 已恢复为 {replicas} 个副本")
+        else:
+            self._warn(f"恢复副本数失败: {err[:100]}")
+
     def _shell_quote(self, script: str) -> str:
         escaped = script.replace("'", "'\"'\"'")
         return f"'{escaped}'"
@@ -973,7 +1145,7 @@ class OpenClawTestCLI:
         self._print(f"{'═' * 72}{RESET}")
         self._print(f"  Stack:     {self.stack_name or '(仅静态校验)'}")
         self._print(f"  Region:    {self.region}")
-        self._print(f"  Sandbox:   {'启用' if self.args.sandbox_test else '未启用 (--sandbox-test)'}")
+        self._print(f"  Sandbox:   {'启用' if self.args.sandbox_test else '未启用 (--no-sandbox-test)'}")
         mode_parts = []
         if not self.args.network_only:
             mode_parts.append("静态校验")
@@ -1022,6 +1194,9 @@ class OpenClawTestCLI:
         # Phase 4: Sandbox E2E
         self.phase4_sandbox_test()
 
+        # Phase 4b: Sandbox isolation
+        self.phase4b_sandbox_isolation_test()
+
         # Phase 5: Summary
         return self.phase5_summary()
 
@@ -1055,9 +1230,13 @@ def main():
 
     parser.add_argument("--template-only", action="store_true", help="仅运行静态模版校验")
     parser.add_argument("--network-only", action="store_true", help="仅运行网络验证（跳过模版校验）")
-    parser.add_argument("--sandbox-test", action="store_true", help="启用 E2B Sandbox 端到端测试")
+    parser.add_argument("--sandbox-test", action="store_true", default=True, help="启用 E2B Sandbox 端到端测试（默认启用）")
+    parser.add_argument("--no-sandbox-test", action="store_true", help="禁用 E2B Sandbox 端到端测试")
 
     args = parser.parse_args()
+
+    if args.no_sandbox_test:
+        args.sandbox_test = False
 
     cli = OpenClawTestCLI(args)
     success = cli.run()

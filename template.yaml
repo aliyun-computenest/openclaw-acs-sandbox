@@ -641,7 +641,7 @@ Parameters:
     Label:
       en: Whether to enable the public ip.
       zh-cn: 是否支持公网访问
-    Default: true
+    Default: false
   EnablePrivateZone:
     Type: Boolean
     Description:
@@ -684,6 +684,7 @@ Resources:
     Version: default
     Type: MODULE::SHARE::1853370294850618::AckOrAcsCluster
     Properties:
+      KubernetesVersion: 1.32.7-aliyun.1
       EnableDualZones: true
       PayType: PostPaid
       CsOptions:
