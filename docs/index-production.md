@@ -630,6 +630,22 @@ spec:
     - "<OpenClawVSwitch2>"
     - "<OpenClawVSwitch3>"
 ```
+### 模板参数与网络隔离概念速查表
+
+| 模板参数 | 对应概念 | 用途 |
+|---------|---------|------|
+| `VpcCidrBlock` | VPC 主网段 | 安全组规则、TrafficPolicy egress allow（API Server/Poseidon） |
+| `VSwitchCidrBlock1/2/3` | vsw-downstream（业务交换机） | sandbox-manager、ALB、ECS 节点所在网段 |
+| `OpenClawVSwitchCidrBlock1/2/3` | vsw-openclaw（隔离交换机） | Sandbox Pod 实际运行的网段 |
+| `OpenClawCidrBlock` | vsw-openclaw 汇总网段 | GlobalTrafficPolicy deny 规则、安全组规则 |
+| `ServiceCidr` | K8s Service 网段 | kube-dns、API Server ClusterIP |
+| `OpenClawSecurityGroup` | 集群安全组（normal） | ACK 集群整体安全组 |
+| `OpenClawIsolationSecurityGroup` | 隔离安全组（enterprise） | Sandbox Pod 专用，Pod 间默认不互通 |
+| `OpenClawNatGateway` + `OpenClawNatEip` | upstream（独立 NAT） | Sandbox Pod 出公网流量隔离 |
+| `OpenClawRouteTable` | 独立路由表 | OpenClaw 交换机默认路由指向独立 NAT |
+| `OpenClawPodNetworking` | PodNetworking CRD | 将 Pod 调度到隔离交换机 + 绑定隔离安全组 |
+| `GlobalTrafficPolicyApplication` | GlobalTrafficPolicy | 全局拒绝 OpenClaw 网段入站 |
+| `OpenClawTrafficPolicyApplication` | TrafficPolicy | OpenClaw Pod 精细化 ingress/egress 控制 |
 
 ## 可观测能力
 ### OpenClaw 日志
@@ -656,22 +672,7 @@ SLS提供开箱即用的OpenClaw采集配置，可以通过SLS控制台访问Ope
 
 注意：
 内置采集配置仅针对demo镜像，自定义镜像的日志路径、容器过滤条件等可能有所不同，可以在ACK集群内通过修改对应的CR进行配置修正。
-### 模板参数与网络隔离概念速查表
 
-| 模板参数 | 对应概念 | 用途 |
-|---------|---------|------|
-| `VpcCidrBlock` | VPC 主网段 | 安全组规则、TrafficPolicy egress allow（API Server/Poseidon） |
-| `VSwitchCidrBlock1/2/3` | vsw-downstream（业务交换机） | sandbox-manager、ALB、ECS 节点所在网段 |
-| `OpenClawVSwitchCidrBlock1/2/3` | vsw-openclaw（隔离交换机） | Sandbox Pod 实际运行的网段 |
-| `OpenClawCidrBlock` | vsw-openclaw 汇总网段 | GlobalTrafficPolicy deny 规则、安全组规则 |
-| `ServiceCidr` | K8s Service 网段 | kube-dns、API Server ClusterIP |
-| `OpenClawSecurityGroup` | 集群安全组（normal） | ACK 集群整体安全组 |
-| `OpenClawIsolationSecurityGroup` | 隔离安全组（enterprise） | Sandbox Pod 专用，Pod 间默认不互通 |
-| `OpenClawNatGateway` + `OpenClawNatEip` | upstream（独立 NAT） | Sandbox Pod 出公网流量隔离 |
-| `OpenClawRouteTable` | 独立路由表 | OpenClaw 交换机默认路由指向独立 NAT |
-| `OpenClawPodNetworking` | PodNetworking CRD | 将 Pod 调度到隔离交换机 + 绑定隔离安全组 |
-| `GlobalTrafficPolicyApplication` | GlobalTrafficPolicy | 全局拒绝 OpenClaw 网段入站 |
-| `OpenClawTrafficPolicyApplication` | TrafficPolicy | OpenClaw Pod 精细化 ingress/egress 控制 |
 
 ## 重要时间预估
 
