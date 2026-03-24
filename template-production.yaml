@@ -15,6 +15,24 @@ Conditions:
     Fn::Equals:
       - true
       - Ref: EnablePrivateZone
+  # NewVPC 场景下创建全新 PrivateZone（不存在重复绑定风险）
+  CreateNewPrivateZoneCondition:
+    Fn::And:
+      - Fn::Equals:
+          - true
+          - Ref: EnablePrivateZone
+      - Fn::Equals:
+          - NewVPC
+          - Ref: VpcOption
+  # ExistingVPC 场景下查询并复用已有 PrivateZone（避免 ZoneVpc.Zone.Repeated 冲突）
+  UseExistingPrivateZoneCondition:
+    Fn::And:
+      - Fn::Equals:
+          - true
+          - Ref: EnablePrivateZone
+      - Fn::Equals:
+          - ExistingVPC
+          - Ref: VpcOption
   EnablePublicIpConditions:
     Fn::Equals:
       - true
@@ -349,14 +367,17 @@ Parameters:
       en: OpenClaw VSwitch ID 1
       zh-cn: OpenClaw 专用交换机ID 1
     Description:
-      zh-cn: OpenClaw 隔离网段交换机（可用区1），独立安全组，用于 Sandbox Pod 网络隔离
-      en: OpenClaw isolated VSwitch in Zone 1, with dedicated SecurityGroup for Sandbox Pod isolation
+      zh-cn: OpenClaw 隔离网段交换机（可用区1），独立安全组，用于 Sandbox Pod 网络隔离。3 个 OpenClaw 交换机必须互不相同，确保网络隔离有效
+      en: OpenClaw isolated VSwitch in Zone 1, with dedicated SecurityGroup for Sandbox Pod isolation. All 3 OpenClaw VSwitches must be different for proper network isolation
     Required: true
     Default: null
     AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId1}'
+      Exclusive:
+        - '${OpenClawVSwitchId2}'
+        - '${OpenClawVSwitchId3}'
       Visible:
         Condition:
           Fn::Equals:
@@ -368,14 +389,17 @@ Parameters:
       en: OpenClaw VSwitch ID 2
       zh-cn: OpenClaw 专用交换机ID 2
     Description:
-      zh-cn: OpenClaw 隔离网段交换机（可用区2），独立安全组，用于 Sandbox Pod 网络隔离
-      en: OpenClaw isolated VSwitch in Zone 2, with dedicated SecurityGroup for Sandbox Pod isolation
+      zh-cn: OpenClaw 隔离网段交换机（可用区2），独立安全组，用于 Sandbox Pod 网络隔离。3 个 OpenClaw 交换机必须互不相同，确保网络隔离有效
+      en: OpenClaw isolated VSwitch in Zone 2, with dedicated SecurityGroup for Sandbox Pod isolation. All 3 OpenClaw VSwitches must be different for proper network isolation
     Required: true
     Default: null
     AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId2}'
+      Exclusive:
+        - '${OpenClawVSwitchId1}'
+        - '${OpenClawVSwitchId3}'
       Visible:
         Condition:
           Fn::Equals:
@@ -387,14 +411,17 @@ Parameters:
       en: OpenClaw VSwitch ID 3
       zh-cn: OpenClaw 专用交换机ID 3
     Description:
-      zh-cn: OpenClaw 隔离网段交换机（可用区3），独立安全组，用于 Sandbox Pod 网络隔离
-      en: OpenClaw isolated VSwitch in Zone 3, with dedicated SecurityGroup for Sandbox Pod isolation
+      zh-cn: OpenClaw 隔离网段交换机（可用区3），独立安全组，用于 Sandbox Pod 网络隔离。3 个 OpenClaw 交换机必须互不相同，确保网络隔离有效
+      en: OpenClaw isolated VSwitch in Zone 3, with dedicated SecurityGroup for Sandbox Pod isolation. All 3 OpenClaw VSwitches must be different for proper network isolation
     Required: true
     Default: null
     AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId3}'
+      Exclusive:
+        - '${OpenClawVSwitchId1}'
+        - '${OpenClawVSwitchId2}'
       Visible:
         Condition:
           Fn::Equals:
@@ -1624,9 +1651,12 @@ Resources:
               - VSwitchId
           - Ref: OpenClawVSwitchId1
 
+  # 链式依赖 Association1，避免多个路由表关联并发操作同一 VSwitch 导致中间态报错
   OpenClawRouteTableAssociation2:
     Type: ALIYUN::VPC::RouteTableAssociation
-    DependsOn: OpenClawRouteEntry
+    DependsOn:
+      - OpenClawRouteEntry
+      - OpenClawRouteTableAssociation1
     Properties:
       RouteTableId:
         Fn::GetAtt:
@@ -1640,9 +1670,12 @@ Resources:
               - VSwitchId
           - Ref: OpenClawVSwitchId2
 
+  # 链式依赖 Association2，避免多个路由表关联并发操作同一 VSwitch 导致中间态报错
   OpenClawRouteTableAssociation3:
     Type: ALIYUN::VPC::RouteTableAssociation
-    DependsOn: OpenClawRouteEntry
+    DependsOn:
+      - OpenClawRouteEntry
+      - OpenClawRouteTableAssociation2
     Properties:
       RouteTableId:
         Fn::GetAtt:
@@ -1679,9 +1712,12 @@ Resources:
       SnatEntryName: openclaw-snat-vsw1
 
   # SNAT 规则：OpenClaw VSwitch2 流量走独立 NAT
+  # 链式依赖 SnatEntry1，避免多个 SNAT 规则并发操作同一 VSwitch 导致中间态报错
   OpenClawSnatEntry2:
     Type: ALIYUN::VPC::SnatEntry
-    DependsOn: OpenClawNatEipAssociation
+    DependsOn:
+      - OpenClawNatEipAssociation
+      - OpenClawSnatEntry1
     Properties:
       SnatTableId:
         Fn::GetAtt:
@@ -1701,9 +1737,12 @@ Resources:
       SnatEntryName: openclaw-snat-vsw2
 
   # SNAT 规则：OpenClaw VSwitch3 流量走独立 NAT
+  # 链式依赖 SnatEntry2，避免多个 SNAT 规则并发操作同一 VSwitch 导致中间态报错
   OpenClawSnatEntry3:
     Type: ALIYUN::VPC::SnatEntry
-    DependsOn: OpenClawNatEipAssociation
+    DependsOn:
+      - OpenClawNatEipAssociation
+      - OpenClawSnatEntry2
     Properties:
       SnatTableId:
         Fn::GetAtt:
@@ -2047,9 +2086,9 @@ Resources:
             TLSCert:
               Ref: TLSCert
 
-  # ========== PrivateZone ==========
+  # ========== PrivateZone — NewVPC 场景：创建全新 Zone 并绑定 ==========
   PrivateZone:
-    Condition: CreatePrivateZoneCondition
+    Condition: CreateNewPrivateZoneCondition
     Type: ALIYUN::PVTZ::Zone
     DependsOn: OpenClawSandboxSet
     Properties:
@@ -2057,25 +2096,22 @@ Resources:
       ZoneName:
         Ref: E2BDomainAddress
   PrivateZoneVpcBinder:
-    Condition: CreatePrivateZoneCondition
+    Condition: CreateNewPrivateZoneCondition
     Type: ALIYUN::PVTZ::ZoneVpcBinder
     Properties:
       Vpcs:
         - RegionId:
             Ref: ALIYUN::Region
           VpcId:
-            Fn::If:
-              - CreateNewVpcCondition
-              - Fn::GetAtt:
-                  - Vpc
-                  - VpcId
-              - Ref: VpcId
+            Fn::GetAtt:
+              - Vpc
+              - VpcId
       ZoneId:
         Fn::GetAtt:
           - PrivateZone
           - ZoneId
   PrivateZoneCnameRecord:
-    Condition: CreatePrivateZoneCondition
+    Condition: CreateNewPrivateZoneCondition
     Type: ALIYUN::PVTZ::ZoneRecord
     DependsOn:
       - PrivateZoneVpcBinder
@@ -2085,6 +2121,90 @@ Resources:
         Fn::GetAtt:
           - PrivateZone
           - ZoneId
+      Rr: "*"
+      Type: CNAME
+      Value:
+        Fn::Jq:
+          - First
+          - '.[0].DNSName'
+          - Fn::GetAtt:
+              - AlbDataSource
+              - LoadBalancers
+
+  # ========== PrivateZone — ExistingVPC 场景：查询已有 Zone 并追加绑定新 VPC ==========
+  # Step 1: 通过 VpcId 反查该 VPC 绑定的所有 PrivateZone
+  ExistingVpcZones:
+    Condition: UseExistingPrivateZoneCondition
+    Type: DATASOURCE::PVTZ::Zones
+    DependsOn: OpenClawSandboxSet
+    Properties:
+      VpcId:
+        Ref: VpcId
+      RefreshOptions: Always
+  # Step 2: 用 Fn::Jq 过滤出与 E2BDomainAddress 同名的 Zone，获取其 ZoneId
+  # Step 3: 通过 DATASOURCE::PVTZ::Zone 读取已有 Zone 的详情（获取 BindVpcs）
+  ExistingZoneInfo:
+    Condition: UseExistingPrivateZoneCondition
+    Type: DATASOURCE::PVTZ::Zone
+    DependsOn: ExistingVpcZones
+    Properties:
+      ZoneId:
+        Fn::Jq:
+          - First
+          - Fn::Sub:
+              - '.[] | select(.ZoneName == "${Domain}") | .ZoneId'
+              - Domain:
+                  Ref: E2BDomainAddress
+          - Fn::GetAtt:
+              - ExistingVpcZones
+              - Zones
+      RefreshOptions: Always
+  # Step 4: 合并已有 VPC 列表 + 新创建的 VPC，重新绑定（幂等，不会冲突）
+  ExistingPrivateZoneVpcBinder:
+    Condition: UseExistingPrivateZoneCondition
+    Type: ALIYUN::PVTZ::ZoneVpcBinder
+    DependsOn: ExistingZoneInfo
+    Properties:
+      ZoneId:
+        Fn::Jq:
+          - First
+          - Fn::Sub:
+              - '.[] | select(.ZoneName == "${Domain}") | .ZoneId'
+              - Domain:
+                  Ref: E2BDomainAddress
+          - Fn::GetAtt:
+              - ExistingVpcZones
+              - Zones
+      Vpcs:
+        Fn::ListMerge:
+          - Fn::Jq:
+              - First
+              - '[.[] | {VpcId: .VpcId, RegionId: .RegionId}]'
+              - Fn::GetAtt:
+                  - ExistingZoneInfo
+                  - BindVpcs
+          - - VpcId:
+                Ref: VpcId
+              RegionId:
+                Ref: ALIYUN::Region
+  # Step 5: 在已有 Zone 中创建 CNAME 记录（指向 ALB）
+  ExistingPrivateZoneCnameRecord:
+    Condition: UseExistingPrivateZoneCondition
+    Type: ALIYUN::PVTZ::ZoneRecord
+    DependsOn:
+      - ExistingPrivateZoneVpcBinder
+      - AlbDataSource
+    Properties:
+      ZoneId:
+        Fn::Jq:
+          - First
+          - Fn::Sub:
+              - '.[] | select(.ZoneName == "${Domain}") | .ZoneId'
+              - Domain:
+                  Ref: E2BDomainAddress
+          - Fn::GetAtt:
+              - ExistingVpcZones
+              - Zones
       Rr: "*"
       Type: CNAME
       Value:

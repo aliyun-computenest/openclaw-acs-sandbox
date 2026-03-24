@@ -128,6 +128,21 @@
 
 > ⚠️ **重要**：OpenClaw 隔离网段建议使用与 VPC 主网段不同的地址空间（如 `10.8.x.0/24`），便于 TrafficPolicy 和安全组规则精细化控制。汇总网段必须覆盖所有 3 个隔离网段。
 
+> 🔒 **3 个 OpenClaw 交换机必须互不相同**
+>
+> 每个 OpenClaw 交换机承载独立的路由表关联和 SNAT 规则，是网络隔离的基础。如果两个交换机选择了同一个 VSwitch，会导致路由表重复关联和 SNAT 规则冲突，部署将失败。
+>
+> **即使地域只有 2 个可用区，也必须选择 3 个不同的交换机**。同一个可用区内可以创建多个不同 CIDR 的交换机。例如：
+>
+> | 参数 | 可用区 | VSwitch | CIDR |
+> |------|--------|---------|------|
+> | OpenClaw 交换机 1 | cn-beijing-g | vsw-aaa | `10.8.0.0/24` |
+> | OpenClaw 交换机 2 | cn-beijing-h | vsw-bbb | `10.8.1.0/24` |
+> | OpenClaw 交换机 3 | cn-beijing-h | vsw-ccc | `10.8.2.0/24` |
+>
+> 上例中，交换机 2 和 3 在同一个可用区（cn-beijing-h），但使用不同的 CIDR，因此是两个不同的 VSwitch，满足隔离要求。
+>
+
 ### 步骤 6：配置集群参数
 
 | 参数 | 说明 | 建议值 |
@@ -366,6 +381,64 @@ curl --cacert fullchain.pem -X POST --location "https://api.<e2b-domain>/sandbox
 ```
 
 返回结果中存在 `sandboxID` 且 `state: "running"` 即表示创建成功。
+
+### 通过集群内 TestPod 创建（快速验证）
+
+部署完成后，集群内会自动创建 `acs-sandbox-test-pod`，可以直接通过它调用 sandbox-manager 内部接口 claim 一个沙箱：
+
+```bash
+# ⚠️ 重要：必须将下面的 API Key 替换为实际值！
+# API Key 可在计算巢服务实例详情页的 E2B_API_KEY 字段找到
+kubectl exec -n default acs-sandbox-test-pod -- curl -s -X POST \
+  "http://sandbox-manager.sandbox-system:8080/sandboxes" \
+  -H "X-API-Key: 你的实际API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"templateID":"openclaw","timeout":1800}'
+```
+
+> ⚠️ **常见错误**：如果返回 `sandboxID: None, state: None`，说明 API Key 未正确替换。请确保将命令中的占位符替换为计算巢服务实例详情页显示的实际 `E2B_API_KEY` 值。
+
+返回示例：
+```json
+{
+  "sandboxID": "openclaw-abc12",
+  "clientID": "...",
+  "templateID": "openclaw",
+  "state": "running"
+}
+```
+
+> ⚠️ **重要**：必须通过 E2B API（`POST /sandboxes`）正式 claim 沙箱，sandbox-manager 内部路由状态才会从 `available` 变为 `running`。手动 patch K8s label 不会改变内部路由状态，直接访问未 claim 的沙箱会返回 502 错误。
+
+**Claim 后访问 Web UI 的一键脚本**：
+
+```bash
+# 1. Claim sandbox
+RESULT=$(kubectl exec -n default acs-sandbox-test-pod -- curl -s -X POST \
+  "http://sandbox-manager.sandbox-system:8080/sandboxes" \
+  -H "X-API-Key: <admin-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"templateID":"openclaw","timeout":1800}')
+echo "Claim 结果: $RESULT"
+
+# 2. 提取 sandboxID
+SANDBOX_ID=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['sandboxID'])")
+echo "Sandbox ID: $SANDBOX_ID"
+
+# 3. 获取 ALB IP
+ALB_IP=$(kubectl get ingress -n sandbox-system sandbox-manager -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+echo "ALB IP: $ALB_IP"
+
+# 4. 添加 hosts 记录
+DOMAIN="18789-default--${SANDBOX_ID}.<e2b-domain>"
+sudo sh -c "echo '${ALB_IP} ${DOMAIN}' >> /etc/hosts"
+echo "已添加 hosts: ${ALB_IP} ${DOMAIN}"
+
+# 5. 浏览器访问
+echo "访问地址: https://${DOMAIN}?token=<gateway-token>"
+```
+
+> 将 `<e2b-domain>` 替换为部署时配置的 E2B 域名（如 `agent-vpc.infra`），`<gateway-token>` 替换为 SandboxSet 中配置的 `GATEWAY_TOKEN` 值。
 
 ### 通过 Python SDK 创建
 

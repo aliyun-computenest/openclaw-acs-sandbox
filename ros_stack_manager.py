@@ -562,14 +562,19 @@ def unbind_privatezone_vpc(zone_id: str, vpc_id: str, region_id: str) -> bool:
 
 def precheck_privatezone_conflicts(parameters: List[Dict[str, str]], region_id: str):
     """
-    在创建 Stack 前预检 PrivateZone VPC 绑定冲突，并自动清理。
+    在创建 Stack 前预检 PrivateZone VPC 绑定状态（仅检测，不自动解绑）。
 
     触发条件（同时满足）：
     - EnablePrivateZone 参数为 true
     - VpcId 参数有值（ExistingVPC 场景）
-    - E2BDomainAddress 对应的 PrivateZone 已绑定该 VPC
 
-    检测到冲突时自动解绑旧的 Zone-VPC 绑定，让新 Stack 可以重新绑定。
+    模板中已有 UseExistingPrivateZoneCondition 逻辑来处理已有 Zone 的情况：
+    - 如果 Zone 已存在且绑定了该 VPC，模板会走 ExistingPrivateZone 分支，
+      查询已有 Zone 的 BindVpcs 并追加新 VPC 重新绑定（幂等操作）。
+    - 如果 Zone 不存在，模板会走 CreateNewPrivateZone 分支创建新 Zone。
+
+    因此预检不应解绑 VPC，否则会导致 ExistingVpcZones（通过 VpcId 查询）
+    查不到已有 Zone，使后续 Jq 操作返回 null 导致 Stack 创建失败。
     """
     param_map = {p["ParameterKey"]: p["ParameterValue"] for p in parameters}
 
@@ -580,21 +585,15 @@ def precheck_privatezone_conflicts(parameters: List[Dict[str, str]], region_id: 
     if enable_private_zone != "true" or not vpc_id or not zone_name:
         return
 
-    print(f"\n[预检] 检测 PrivateZone 冲突: 域名={zone_name}, VPC={vpc_id}")
+    print(f"\n[预检] 检测 PrivateZone 状态: 域名={zone_name}, VPC={vpc_id}")
     conflict = find_conflicting_privatezone(zone_name, vpc_id, region_id)
 
     if not conflict:
-        print(f"[预检] 未发现冲突，继续创建 Stack")
-        return
-
-    zone_id = conflict["ZoneId"]
-    print(f"[预检] 发现冲突: Zone '{zone_name}' (ZoneId={zone_id}) 已绑定 VPC {vpc_id}")
-    print(f"[预检] 自动解绑旧 Zone-VPC 绑定...")
-
-    if unbind_privatezone_vpc(zone_id, vpc_id, region_id):
-        print(f"[预检] 解绑成功，继续创建 Stack")
+        print(f"[预检] 未发现已有同名 Zone 绑定该 VPC，模板将创建新 Zone")
     else:
-        print(f"[预检] 解绑失败，Stack 创建可能会因 ZoneVpc.Zone.Repeated 报错")
+        zone_id = conflict["ZoneId"]
+        print(f"[预检] 发现已有 Zone '{zone_name}' (ZoneId={zone_id}) 已绑定 VPC {vpc_id}")
+        print(f"[预检] 模板将复用已有 Zone 并追加绑定新 VPC（UseExistingPrivateZoneCondition）")
 
 
 def cmd_create(args, region_id: str):

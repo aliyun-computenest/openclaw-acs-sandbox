@@ -939,7 +939,7 @@ Resources:
               replicas: ${OpenClawReplicas}
               template:
                 metadata:
-                  labels:        
+                  labels:
                     alibabacloud.com/acs: "true"
                     app: openclaw
                   annotations:
@@ -964,7 +964,7 @@ Resources:
                       restartPolicy: Always
                   containers:
                     - name: openclaw
-                      image: "${OpenClawImage}"         
+                      image: "${OpenClawImage}"
                       imagePullPolicy: IfNotPresent
                       securityContext:
                         readOnlyRootFilesystem: false
@@ -980,9 +980,9 @@ Resources:
                       env:
                         - name: ENVD_DIR
                           value: /mnt/envd
-                        - name: DASHSCOPE_API_KEY 
+                        - name: DASHSCOPE_API_KEY
                           value: "${BaiLianApiKey}"
-                        - name: GATEWAY_TOKEN 
+                        - name: GATEWAY_TOKEN
                           value: "${OpenClawGatewayToken}"
                       volumeMounts:
                         - name: envd-volume
@@ -1088,7 +1088,7 @@ Resources:
           apiGroup: rbac.authorization.k8s.io
   EditAlbConfigJob:
     Type: ALIYUN::CS::ClusterApplication
-    DependsOn: 
+    DependsOn:
       - AddonSleep
       - EditAlbConfigBinding
     Properties:
@@ -1106,7 +1106,7 @@ Resources:
               name: edit-alb-config-job
             spec:
               template:
-                metadata: 
+                metadata:
                   name: edit-alb-config-job
                 spec:
                   serviceAccountName: edit-alb-config-sa
@@ -1114,17 +1114,17 @@ Resources:
                   containers:
                   - name: edit-alb-config-job
                     image: compute-nest-registry.cn-hangzhou.cr.aliyuncs.com/public/dtzar/helm-kubectl:3.12.0
-                    command: [ "/bin/sh", "-c", "--" ] 
+                    command: [ "/bin/sh", "-c", "--" ]
                     args:
                       - |
                         set -x
                         cd ~
                         mkdir -p ~/.kube
                         echo '${KubeConfig}' | base64 -d >> ~/.kube/config
-                        
+
                         echo "开始修改 AlbConfig 资源：alb"
                         kubectl patch albconfig.alibabacloud.com alb --type='json' -p='[{"op":"add","path":"/spec/listeners/-","value":{"port":443,"protocol":"HTTPS","requestTimeout":600}}]'
-                        
+
           - KubeConfig:
               Fn::Replace:
                 - "\n": ''

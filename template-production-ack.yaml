@@ -387,14 +387,17 @@ Parameters:
       en: OpenClaw VSwitch ID 1
       zh-cn: OpenClaw 专用交换机ID 1
     Description:
-      zh-cn: OpenClaw 隔离网段交换机（可用区1），独立安全组，用于 Sandbox Pod 网络隔离
-      en: OpenClaw isolated VSwitch in Zone 1, with dedicated SecurityGroup for Sandbox Pod isolation
+      zh-cn: OpenClaw 隔离网段交换机（可用区1），独立安全组，用于 Sandbox Pod 网络隔离。3 个 OpenClaw 交换机必须互不相同，确保网络隔离有效
+      en: OpenClaw isolated VSwitch in Zone 1, with dedicated SecurityGroup for Sandbox Pod isolation. All 3 OpenClaw VSwitches must be different for proper network isolation
     Required: true
     Default: null
     AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId1}'
+      Exclusive:
+        - '${OpenClawVSwitchId2}'
+        - '${OpenClawVSwitchId3}'
       Visible:
         Condition:
           Fn::Equals:
@@ -406,14 +409,17 @@ Parameters:
       en: OpenClaw VSwitch ID 2
       zh-cn: OpenClaw 专用交换机ID 2
     Description:
-      zh-cn: OpenClaw 隔离网段交换机（可用区2），独立安全组，用于 Sandbox Pod 网络隔离
-      en: OpenClaw isolated VSwitch in Zone 2, with dedicated SecurityGroup for Sandbox Pod isolation
+      zh-cn: OpenClaw 隔离网段交换机（可用区2），独立安全组，用于 Sandbox Pod 网络隔离。3 个 OpenClaw 交换机必须互不相同，确保网络隔离有效
+      en: OpenClaw isolated VSwitch in Zone 2, with dedicated SecurityGroup for Sandbox Pod isolation. All 3 OpenClaw VSwitches must be different for proper network isolation
     Required: true
     Default: null
     AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId2}'
+      Exclusive:
+        - '${OpenClawVSwitchId1}'
+        - '${OpenClawVSwitchId3}'
       Visible:
         Condition:
           Fn::Equals:
@@ -425,14 +431,17 @@ Parameters:
       en: OpenClaw VSwitch ID 3
       zh-cn: OpenClaw 专用交换机ID 3
     Description:
-      zh-cn: OpenClaw 隔离网段交换机（可用区3），独立安全组，用于 Sandbox Pod 网络隔离
-      en: OpenClaw isolated VSwitch in Zone 3, with dedicated SecurityGroup for Sandbox Pod isolation
+      zh-cn: OpenClaw 隔离网段交换机（可用区3），独立安全组，用于 Sandbox Pod 网络隔离。3 个 OpenClaw 交换机必须互不相同，确保网络隔离有效
+      en: OpenClaw isolated VSwitch in Zone 3, with dedicated SecurityGroup for Sandbox Pod isolation. All 3 OpenClaw VSwitches must be different for proper network isolation
     Required: true
     Default: null
     AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId3}'
+      Exclusive:
+        - '${OpenClawVSwitchId1}'
+        - '${OpenClawVSwitchId2}'
       Visible:
         Condition:
           Fn::Equals:
@@ -1776,9 +1785,12 @@ Resources:
               - VSwitchId
           - Ref: OpenClawVSwitchId1
 
+  # 链式依赖 Association1，避免多个路由表关联并发操作同一 VSwitch 导致中间态报错
   OpenClawRouteTableAssociation2:
     Type: ALIYUN::VPC::RouteTableAssociation
-    DependsOn: OpenClawRouteEntry
+    DependsOn:
+      - OpenClawRouteEntry
+      - OpenClawRouteTableAssociation1
     Properties:
       RouteTableId:
         Fn::GetAtt:
@@ -1792,9 +1804,12 @@ Resources:
               - VSwitchId
           - Ref: OpenClawVSwitchId2
 
+  # 链式依赖 Association2，避免多个路由表关联并发操作同一 VSwitch 导致中间态报错
   OpenClawRouteTableAssociation3:
     Type: ALIYUN::VPC::RouteTableAssociation
-    DependsOn: OpenClawRouteEntry
+    DependsOn:
+      - OpenClawRouteEntry
+      - OpenClawRouteTableAssociation2
     Properties:
       RouteTableId:
         Fn::GetAtt:
@@ -1831,9 +1846,12 @@ Resources:
       SnatEntryName: openclaw-snat-vsw1
 
   # SNAT 规则：OpenClaw VSwitch2 流量走独立 NAT
+  # 链式依赖 SnatEntry1，避免多个 SNAT 规则并发操作同一 VSwitch 导致中间态报错
   OpenClawSnatEntry2:
     Type: ALIYUN::VPC::SnatEntry
-    DependsOn: OpenClawNatEipAssociation
+    DependsOn:
+      - OpenClawNatEipAssociation
+      - OpenClawSnatEntry1
     Properties:
       SnatTableId:
         Fn::GetAtt:
@@ -1853,9 +1871,12 @@ Resources:
       SnatEntryName: openclaw-snat-vsw2
 
   # SNAT 规则：OpenClaw VSwitch3 流量走独立 NAT
+  # 链式依赖 SnatEntry2，避免多个 SNAT 规则并发操作同一 VSwitch 导致中间态报错
   OpenClawSnatEntry3:
     Type: ALIYUN::VPC::SnatEntry
-    DependsOn: OpenClawNatEipAssociation
+    DependsOn:
+      - OpenClawNatEipAssociation
+      - OpenClawSnatEntry2
     Properties:
       SnatTableId:
         Fn::GetAtt:
@@ -2251,7 +2272,7 @@ Resources:
                       restartPolicy: Always
                   containers:
                     - name: openclaw
-                      image: "${OpenClawImage}"         
+                      image: "${OpenClawImage}"
                       imagePullPolicy: IfNotPresent
                       securityContext:
                         readOnlyRootFilesystem: false
@@ -2267,9 +2288,9 @@ Resources:
                       env:
                         - name: ENVD_DIR
                           value: /mnt/envd
-                        - name: DASHSCOPE_API_KEY 
+                        - name: DASHSCOPE_API_KEY
                           value: "${BaiLianApiKey}"
-                        - name: GATEWAY_TOKEN 
+                        - name: GATEWAY_TOKEN
                           value: "${OpenClawGatewayToken}"
                       volumeMounts:
                         - name: envd-volume
@@ -2374,7 +2395,7 @@ Resources:
           apiGroup: rbac.authorization.k8s.io
   EditAlbConfigJob:
     Type: ALIYUN::CS::ClusterApplication
-    DependsOn: 
+    DependsOn:
       - AddonSleep
       - EditAlbConfigBinding
     Properties:
@@ -2390,7 +2411,7 @@ Resources:
           name: edit-alb-config-job
         spec:
           template:
-            metadata: 
+            metadata:
               name: edit-alb-config-job
             spec:
               serviceAccountName: edit-alb-config-sa
@@ -2398,7 +2419,7 @@ Resources:
               containers:
               - name: edit-alb-config-job
                 image: compute-nest-registry.cn-hangzhou.cr.aliyuncs.com/public/dtzar/helm-kubectl:3.12.0
-                command: [ "/bin/sh", "-c", "--" ] 
+                command: [ "/bin/sh", "-c", "--" ]
                 args:
                   - |
                     set -x
