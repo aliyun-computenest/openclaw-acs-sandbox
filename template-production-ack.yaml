@@ -387,17 +387,14 @@ Parameters:
       en: OpenClaw VSwitch ID 1
       zh-cn: OpenClaw 专用交换机ID 1
     Description:
-      zh-cn: OpenClaw 隔离网段交换机（可用区1），独立安全组，用于 Sandbox Pod 网络隔离。3 个 OpenClaw 交换机必须互不相同，确保网络隔离有效
-      en: OpenClaw isolated VSwitch in Zone 1, with dedicated SecurityGroup for Sandbox Pod isolation. All 3 OpenClaw VSwitches must be different for proper network isolation
+      zh-cn: OpenClaw 隔离网段交换机（可用区1），独立安全组，用于 Sandbox Pod 网络隔离
+      en: OpenClaw isolated VSwitch in Zone 1, with dedicated SecurityGroup for Sandbox Pod isolation
     Required: true
     Default: null
     AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId1}'
-      Exclusive:
-        - '${OpenClawVSwitchId2}'
-        - '${OpenClawVSwitchId3}'
       Visible:
         Condition:
           Fn::Equals:
@@ -409,17 +406,14 @@ Parameters:
       en: OpenClaw VSwitch ID 2
       zh-cn: OpenClaw 专用交换机ID 2
     Description:
-      zh-cn: OpenClaw 隔离网段交换机（可用区2），独立安全组，用于 Sandbox Pod 网络隔离。3 个 OpenClaw 交换机必须互不相同，确保网络隔离有效
-      en: OpenClaw isolated VSwitch in Zone 2, with dedicated SecurityGroup for Sandbox Pod isolation. All 3 OpenClaw VSwitches must be different for proper network isolation
+      zh-cn: OpenClaw 隔离网段交换机（可用区2），独立安全组，用于 Sandbox Pod 网络隔离
+      en: OpenClaw isolated VSwitch in Zone 2, with dedicated SecurityGroup for Sandbox Pod isolation
     Required: true
     Default: null
     AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId2}'
-      Exclusive:
-        - '${OpenClawVSwitchId1}'
-        - '${OpenClawVSwitchId3}'
       Visible:
         Condition:
           Fn::Equals:
@@ -431,17 +425,14 @@ Parameters:
       en: OpenClaw VSwitch ID 3
       zh-cn: OpenClaw 专用交换机ID 3
     Description:
-      zh-cn: OpenClaw 隔离网段交换机（可用区3），独立安全组，用于 Sandbox Pod 网络隔离。3 个 OpenClaw 交换机必须互不相同，确保网络隔离有效
-      en: OpenClaw isolated VSwitch in Zone 3, with dedicated SecurityGroup for Sandbox Pod isolation. All 3 OpenClaw VSwitches must be different for proper network isolation
+      zh-cn: OpenClaw 隔离网段交换机（可用区3），独立安全组，用于 Sandbox Pod 网络隔离
+      en: OpenClaw isolated VSwitch in Zone 3, with dedicated SecurityGroup for Sandbox Pod isolation
     Required: true
     Default: null
     AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId3}'
-      Exclusive:
-        - '${OpenClawVSwitchId1}'
-        - '${OpenClawVSwitchId2}'
       Visible:
         Condition:
           Fn::Equals:
