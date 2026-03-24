@@ -416,9 +416,80 @@ print(f"File content: {content}")
 
 生产级部署通过 **Poseidon 网络策略组件**和 **PodNetworking CRD** 实现 Kubernetes 层面的网络隔离。
 
+
+#### 网段角色定义
+
+从 OpenClaw Sandbox Pod 的视角出发，网络中的各个网段按照**数据流方向**分为以下角色：
+
+| 概念名称 | 含义 | 模板参数/资源 | 默认值示例 | 运行时实体 |
+|---------|------|-------------|-----------|-----------|
+| **vsw-downstream** | **下游网段**。指"谁可以访问 Sandbox Pod"——即 sandbox-manager、ALB 等管控组件所在的业务交换机。流量方向：downstream → openclaw | 参数 `VSwitchCidrBlock1/2/3`，资源 `BusinessVSwitch1/2/3` | `192.168.0.0/24`、`192.168.1.0/24`、`192.168.2.0/24` | sandbox-manager Pod（如 `192.168.1.133`）、ALB、ECS 节点 |
+| **vsw-openclaw** | **OpenClaw 隔离网段**。Sandbox Pod 实际运行的独立交换机，与业务网络物理隔离。生产环境下为 3 个（每个可用区一个） | 参数 `OpenClawVSwitchCidrBlock1/2/3` + `OpenClawCidrBlock`（汇总），资源 `OpenClawVSwitch1/2/3` | `10.8.0.0/24`、`10.8.1.0/24`、`10.8.2.0/24`，汇总 `10.8.0.0/16` | Sandbox Pod（如 `10.8.104.114`） |
+| **vsw-upstream** | **上游网段**。指"Sandbox Pod 可以访问谁"——即公网出口方向。在当前架构中，upstream 不是独立交换机，而是通过独立 NAT 网关出公网，NAT 网关本身位于 downstream 网段中 | 资源 `OpenClawNatGateway` + `OpenClawNatEip` | NAT EIP 如 `39.102.72.45` | 独立 NAT 网关 → 公网 |
+| **vsw-apiserver** | **API Server 网段**。Sandbox Pod 需要与 K8s API Server 和 Poseidon 管控面通信。在当前架构中，API Server 运行在 VPC 主网段内的某个 IP 上，不是独立交换机 | 参数 `VpcCidrBlock`（API Server IP 在此范围内） | API Server IP 如 `192.168.0.x` | API Server（端口 6443）、Poseidon（端口 9082） |
+
+> **简单理解**：downstream 是"谁来找我"，upstream 是"我去找谁"，openclaw 是"我在哪"，apiserver 是"我的管控面在哪"。
+
+#### 网段与流量方向图
+
+```
+                  downstream (业务网段)                    openclaw (隔离网段)
+              ┌──────────────────────┐              ┌──────────────────────┐
+              │  192.168.0.0/24 (AZ1)│              │  10.8.0.0/24 (AZ1)  │
+              │  192.168.1.0/24 (AZ2)│──ingress──▶  │  10.8.1.0/24 (AZ2)  │
+              │  192.168.2.0/24 (AZ3)│              │  10.8.2.0/24 (AZ3)  │
+              │                      │              │                      │
+              │  sandbox-manager     │              │  Sandbox Pod         │
+              │  ALB / ECS 节点      │              │  (app: openclaw)     │
+              └──────────────────────┘              └──────────┬───────────┘
+                                                               │ egress
+                                                               ▼
+                                                    ┌──────────────────────┐
+                                                    │  独立 NAT 网关        │
+                                                    │  (upstream → 公网)    │
+                                                    │  EIP: 39.x.x.x      │
+                                                    └──────────────────────┘
+                                                               │
+                                                               ▼
+                                                           公网服务
+```
+
+#### 两层安全组
+
+模板中创建了**两个安全组**，分别承担不同的安全职责：
+
+| 安全组 | 模板资源名 | 类型 | 关联对象 | 核心作用 |
+|--------|----------|------|---------|---------|
+| **集群安全组** | `OpenClawSecurityGroup` | normal（默认同组互通） | ACK 集群整体（ECS 节点、VirtualNode） | 保证集群基础组件正常运行。额外放行 OpenClaw 网段访问 API Server 6443 和 Poseidon 9082 |
+| **隔离安全组** | `OpenClawIsolationSecurityGroup` | enterprise（默认同组不互通） | 仅 OpenClaw Sandbox Pod（通过 PodNetworking 关联） | **Pod 间网络隔离的底层保障**。enterprise 类型的 `InnerAccessPolicy=Drop` 确保同安全组内的 Sandbox Pod 之间默认不互通 |
+
+**隔离安全组的关键规则**（对应"企业安全组规则"）：
+
+- **入方向**：允许 VPC 主网段（downstream）全端口访问 → 对应模板参数 `VpcCidrBlock`
+- **出方向**：
+  - 允许访问 API Server 6443 → 对应 `VpcCidrBlock` 和 `ServiceCidr`
+  - 允许访问 Poseidon 9082 → 对应 `VpcCidrBlock`
+  - 允许 DNS 53 → 对应 `ServiceCidr` 和 `VpcCidrBlock`
+  - 允许云产品网段 `100.64.0.0/10`（镜像仓库、SLB 等）
+  - 允许公网 `0.0.0.0/0`（优先级最低，通过 NAT 出去）
+  - **未显式放行的流量自动拒绝**（enterprise 安全组默认 Drop）
+
+#### 三层隔离机制与模板资源对应
+
+| 隔离层 | 机制 | 模板资源 | 说明 |
+|--------|------|---------|------|
+| **第一层：VSwitch 隔离** | PodNetworking CRD | `OpenClawPodNetworking` | 将 Sandbox Pod 调度到 OpenClaw 独立交换机（`OpenClawVSwitch1/2/3`），绑定隔离安全组（`OpenClawIsolationSecurityGroup`） |
+| **第二层：Poseidon TrafficPolicy** | GlobalTrafficPolicy + TrafficPolicy | `GlobalTrafficPolicyApplication` + `OpenClawTrafficPolicyApplication` | K8s 层面的精细化网络策略，控制 ingress/egress 流量 |
+| **第三层：独立 NAT 网关** | 独立路由表 + NAT + EIP | `OpenClawRouteTable` + `OpenClawNatGateway` + `OpenClawNatEip` | OpenClaw 交换机使用独立路由表，默认路由指向独立 NAT，出公网流量与业务完全隔离 |
+
 ### GlobalTrafficPolicy
 
-全局级策略，保护集群中其他应用不被 OpenClaw 网段访问（防止横向渗透）：
+全局级策略，保护集群中**其他应用**不被 OpenClaw 网段访问（防止横向渗透）。
+
+- **模板资源**：`GlobalTrafficPolicyApplication`
+- **作用对象**：`selector: {}`（所有 Pod）
+- **核心逻辑**：拒绝来自 OpenClaw 网段（`OpenClawCidrBlock`）的入站流量，允许其他所有来源
+
 ```yaml
 apiVersion: network.alibabacloud.com/v1alpha1
 kind: GlobalTrafficPolicy
@@ -431,17 +502,57 @@ spec:
     rules:
       - action: deny
         from:
-          - cidr: <openclaw-cidr>  # 拒绝来自 OpenClaw 网段的入站流量
+          - cidr: <OpenClawCidrBlock>  # 如 10.8.0.0/16，拒绝来自 OpenClaw 网段的入站
+      - action: allow
+        from:
+          - cidr: 0.0.0.0/0           # 允许其他所有来源
+  egress:
+    rules:
+      - action: allow
+        to:
+          - cidr: 0.0.0.0/0           # 不限制出方向
 ```
+
+> **规则匹配逻辑**：从上到下逐条匹配，命中第一条规则即停止。因此 deny openclaw 在前，allow 0.0.0.0/0 在后，确保 OpenClaw 网段被拒绝而其他来源被放行。
 
 ### TrafficPolicy
 
-应用级策略，精细化控制 OpenClaw Pod 的出入方向流量：
+应用级策略，精细化控制 **OpenClaw Sandbox Pod** 的出入方向流量。
+
+- **模板资源**：`OpenClawTrafficPolicyApplication`
+- **作用对象**：`selector.matchLabels.app: openclaw`（仅 OpenClaw Pod）
+- **优先级**：100（高于 GlobalTrafficPolicy 的 1000，数字越小优先级越高）
+
+**Ingress 规则**（谁可以访问 Sandbox Pod）：
+
+| 顺序 | 动作 | 来源 | 说明 |
+|------|------|------|------|
+| 1 | allow | `service: sandbox-gateway` | 允许文件传输网关访问 |
+| 2 | allow | `service: sandbox-manager` | 允许管控组件访问（健康检查、envoy 代理等） |
+| 3 | deny | `cidr: 0.0.0.0/0` | 拒绝所有其他来源 |
+
+> `service` 选择器会解析 K8s Service 背后的 Endpoints Pod IP，仅放行这些 IP。例如 `sandbox-manager` service 的后端 Pod IP 为 `192.168.1.133/134/135`，则只有这 3 个 IP 被允许。
+
+**Egress 规则**（Sandbox Pod 可以访问谁）：
+
+| 顺序 | 动作 | 目标 | 说明 |
+|------|------|------|------|
+| 1 | deny | `100.100.100.200/32` | 拒绝 ECS metadata 服务（安全加固） |
+| 2 | allow | `service: kube-dns` | 允许 DNS 解析 |
+| 3 | allow | `100.100.2.136/32`, `100.100.2.138/32` | 允许 VPC DNS（ECI Pod 实际使用的 DNS） |
+| 4 | allow | `100.64.0.0/10` | 允许云产品网段（镜像仓库、SLB 等） |
+| 5 | allow | `<VpcCidrBlock>` | 允许访问 VPC 主网段（API Server 6443、Poseidon 9082） |
+| 6 | deny | `172.16.0.0/12`, `192.168.0.0/16`, `10.0.0.0/8` | **拒绝所有内网段**（Pod 间隔离核心规则） |
+| 7 | allow | `0.0.0.0/0` | 允许公网访问（通过独立 NAT 出去） |
+
+> 规则 5 允许 VPC 主网段在规则 6 deny 内网段之前，确保 Sandbox Pod 能正常与 API Server 和 Poseidon 通信。
+
 ```yaml
 apiVersion: network.alibabacloud.com/v1alpha1
 kind: TrafficPolicy
 metadata:
   name: openclaw-policy
+  namespace: default  # 必须与 Sandbox Pod 同命名空间
 spec:
   priority: 100
   selector:
@@ -451,7 +562,14 @@ spec:
     rules:
       - action: allow
         from:
-          - service: { name: sandbox-gateway }  # 仅允许 Gateway 访问
+          - service:
+              name: sandbox-gateway
+              namespace: sandbox-system
+      - action: allow
+        from:
+          - service:
+              name: sandbox-manager
+              namespace: sandbox-system
       - action: deny
         from:
           - cidr: 0.0.0.0/0
@@ -459,23 +577,40 @@ spec:
     rules:
       - action: deny
         to:
-          - cidr: 100.100.100.200/32  # 拒绝 metadata
+          - cidr: 100.100.100.200/32
       - action: allow
         to:
-          - service: { name: kube-dns }  # 允许 DNS
+          - service:
+              name: kube-dns
+              namespace: kube-system
+      - action: allow
+        to:
+          - cidr: 100.100.2.136/32
+          - cidr: 100.100.2.138/32
+      - action: allow
+        to:
+          - cidr: 100.64.0.0/10
+      - action: allow
+        to:
+          - cidr: <VpcCidrBlock>       # 如 192.168.0.0/16
       - action: deny
         to:
-          - cidr: 172.16.0.0/12       # 拒绝内网段
+          - cidr: 172.16.0.0/12
           - cidr: 192.168.0.0/16
           - cidr: 10.0.0.0/8
       - action: allow
         to:
-          - cidr: 0.0.0.0/0           # 允许公网
+          - cidr: 0.0.0.0/0
 ```
 
 ### PodNetworking
 
-将 Sandbox Pod 调度到 OpenClaw 隔离交换机，并绑定指定安全组：
+将 Sandbox Pod 调度到 OpenClaw 隔离交换机，并绑定**隔离安全组**（enterprise 类型）。
+
+- **模板资源**：`OpenClawPodNetworking`
+- **关联安全组**：`OpenClawIsolationSecurityGroup`（enterprise 类型，同组内默认不互通）
+- **关联交换机**：`OpenClawVSwitch1/2/3`（3 个可用区的隔离交换机）
+
 ```yaml
 apiVersion: network.alibabacloud.com/v1beta1
 kind: PodNetworking
@@ -489,11 +624,11 @@ spec:
       matchLabels:
         app: openclaw
   securityGroupIDs:
-    - "<sg-id>"
+    - "<OpenClawIsolationSecurityGroup>"  # enterprise 类型安全组
   vSwitchOptions:
-    - "<openclaw-vsw-1>"
-    - "<openclaw-vsw-2>"
-    - "<openclaw-vsw-3>"
+    - "<OpenClawVSwitch1>"
+    - "<OpenClawVSwitch2>"
+    - "<OpenClawVSwitch3>"
 ```
 
 ## 可观测能力
@@ -521,6 +656,22 @@ SLS提供开箱即用的OpenClaw采集配置，可以通过SLS控制台访问Ope
 
 注意：
 内置采集配置仅针对demo镜像，自定义镜像的日志路径、容器过滤条件等可能有所不同，可以在ACK集群内通过修改对应的CR进行配置修正。
+### 模板参数与网络隔离概念速查表
+
+| 模板参数 | 对应概念 | 用途 |
+|---------|---------|------|
+| `VpcCidrBlock` | VPC 主网段 | 安全组规则、TrafficPolicy egress allow（API Server/Poseidon） |
+| `VSwitchCidrBlock1/2/3` | vsw-downstream（业务交换机） | sandbox-manager、ALB、ECS 节点所在网段 |
+| `OpenClawVSwitchCidrBlock1/2/3` | vsw-openclaw（隔离交换机） | Sandbox Pod 实际运行的网段 |
+| `OpenClawCidrBlock` | vsw-openclaw 汇总网段 | GlobalTrafficPolicy deny 规则、安全组规则 |
+| `ServiceCidr` | K8s Service 网段 | kube-dns、API Server ClusterIP |
+| `OpenClawSecurityGroup` | 集群安全组（normal） | ACK 集群整体安全组 |
+| `OpenClawIsolationSecurityGroup` | 隔离安全组（enterprise） | Sandbox Pod 专用，Pod 间默认不互通 |
+| `OpenClawNatGateway` + `OpenClawNatEip` | upstream（独立 NAT） | Sandbox Pod 出公网流量隔离 |
+| `OpenClawRouteTable` | 独立路由表 | OpenClaw 交换机默认路由指向独立 NAT |
+| `OpenClawPodNetworking` | PodNetworking CRD | 将 Pod 调度到隔离交换机 + 绑定隔离安全组 |
+| `GlobalTrafficPolicyApplication` | GlobalTrafficPolicy | 全局拒绝 OpenClaw 网段入站 |
+| `OpenClawTrafficPolicyApplication` | TrafficPolicy | OpenClaw Pod 精细化 ingress/egress 控制 |
 
 ## 重要时间预估
 
