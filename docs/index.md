@@ -60,7 +60,7 @@ Examples:
     
 2.  填写相关部署参数、选择部署地域、ACS集群的Service CIDR, 专有网络配置
     
-    ![image.png](https://alidocs.oss-cn-zhangjiakou.aliyuncs.com/res/8oLl952z0kPRylap/img/d6ba943d-0c83-42bd-a00c-2d0facd8396b.png)
+    ![image.png](img_1.png)
     
 3.  填写E2B 域名配置，E2B的访问域名配置为上述前提准备阶段的域名，
     
@@ -85,7 +85,7 @@ Examples:
 9. 部署成功后，在服务实例的详情页也可以查看E2B\_API\_KEY、E2B\_DOMAIN等信息 
     
 
-![image.png](https://alidocs.oss-cn-zhangjiakou.aliyuncs.com/res/8oLl952z0kPRylap/img/0d7faeee-7052-4226-a2ca-38f8f3606dcc.png)
+![image.png](img_8.png)
 
 ## OpenClaw沙箱定义说明
 
@@ -213,7 +213,7 @@ spec:
 
 通过kubectl 创建上述资源，SandboxSet创建完成后，可以看到1个沙箱已经处于可用状态： 
 
-![image.png](https://alidocs.oss-cn-zhangjiakou.aliyuncs.com/res/8oLl952z0kPRylap/img/1105d2f3-13a3-48e1-b12a-b4cdf057ec64.png)
+![image.png](img_6.png)
 
 # 服务部署验证
 
@@ -310,7 +310,7 @@ https://18789-default--openclaw-abc12.agent-vpc.infra?token=clawdbot-mode-123456
 
 1.  获取ALB的访问端点：ack-sandbox-manager 集群中使用Alb作为Ingress，在服务实例详情页，可以找到ACS控制台的链接，点击链接查看sandbox-manager的网关，可以获取ALB的访问端点，如下图所示 
     
-    ![image.png](https://alidocs.oss-cn-zhangjiakou.aliyuncs.com/res/8oLl952z0kPRylap/img/4f88eb0b-3b84-40f8-ba24-cbb4d4cce3f8.png)
+    ![image.png](img_2.png)
     
 2.  获取Alb端点对应的公网地址：本地通过ping ALB的访问端点得到公网Ip `ping alb-xxxxxx`
     
@@ -321,9 +321,9 @@ https://18789-default--openclaw-abc12.agent-vpc.infra?token=clawdbot-mode-123456
 
 #### 配置DNS解析：用于生产环境
 
-1.  获取ALB的访问端点： ack-sandbox-manager 集群中使用Alb作为Ingress，在服务实例详情页，可以到ACS控制台的链接，点击链接查看sandbox-manager的网关，可以获取ALB的访问端点，如下图所示 ![image.png](https://alidocs.oss-cn-zhangjiakou.aliyuncs.com/res/8oLl952z0kPRylap/img/b0eb2ac7-2991-4a7b-8d0e-75d1cd0b430f.png)
+1.  获取ALB的访问端点： ack-sandbox-manager 集群中使用Alb作为Ingress，在服务实例详情页，可以到ACS控制台的链接，点击链接查看sandbox-manager的网关，可以获取ALB的访问端点，如下图所示 ![image.png](img_2.png)
     
-2.  配置DNS解析： 请将Alb的访问端点 以 CNAME 记录类型解析到对应域名， ![image.png](https://alidocs.oss-cn-zhangjiakou.aliyuncs.com/res/8oLl952z0kPRylap/img/fb0b5101-90ba-4791-a769-9b7065b4851c.png)
+2.  配置DNS解析： 请将Alb的访问端点 以 CNAME 记录类型解析到对应域名， ![image.png](img_5.png)
     
 3.  如需通过内网访问，可以通过PrivateZone 为E2B 添加内网域名。(如果部署时选择了新建VPC, 已经为您自动配置了PrivateZone，后续只需要添加解析记录)【可选】
     
