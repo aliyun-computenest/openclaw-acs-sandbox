@@ -53,6 +53,18 @@ Examples:
     
 *   ca-privkey.pem：CA 证书私钥 该脚本会同时生成单域名（your.domain）与泛域名（\*.your.domain）证书，兼容原生 E2B 协议与 OpenKruise 定制 E2B 协议。
     
+### 给RAM 用户授权
+
+如果您使用的是RAM用户，需要授权RAM用户相关权限，才能够完成部署流程，参考[授权文档](https://help.aliyun.com/zh/compute-nest/security-and-compliance/grant-user-permissions-to-a-ram-user)
+ 
+部署此服务需要的权限策略包括两个系统权限策略和一个自定义权限策略, 请联系有管理员权限的用户对RAM用户授予以下权限：
+ **系统权限策略：**
+- AliyunComputeNestUserFullAccess：管理计算巢服务（ComputeNest）的用户侧权限，
+- AliyunROSFullAccess：管理资源编排服务（ROS）的权限。
+ **自定义权限策略：**
+- 测试环境权限策略：[policy_test.json](policy_test.json)
+- 生产环境权限策略：[policy_prod.json](policy_prod.json)
+ 
 
 ## 部署流程
 

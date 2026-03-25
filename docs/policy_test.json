@@ -1,0 +1,188 @@
+{
+    "Statement": [
+        {
+            "Action": [
+                "acc:DescribeZones"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
+                "alb:ListLoadBalancers"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
+                "bss:DescribePrice"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
+                "cs:CreateCluster",
+                "cs:CreateClusterNodePool",
+                "cs:CreateEdasClusterRole",
+                "cs:CreateEdasClusterRoleBinding",
+                "cs:DeleteCluster",
+                "cs:DeleteClusterNodepool",
+                "cs:DescribeClusterAddonsUpgradeStatus",
+                "cs:DescribeClusterAddonsVersion",
+                "cs:DescribeClusterDetail",
+                "cs:DescribeClusterEndpoints",
+                "cs:DescribeClusterNodePoolDetail",
+                "cs:DescribeClusterNodePools",
+                "cs:DescribeClusterResources",
+                "cs:DescribeClusterUserKubeconfig",
+                "cs:DescribeClustersV1",
+                "cs:DescribeEdasClusterToken",
+                "cs:DescribeKubernetesVersionMetadata",
+                "cs:DescribePatternTypes",
+                "cs:DescribeTaskInfo",
+                "cs:DescribeUserPermission",
+                "cs:GetClusterCheck",
+                "cs:GetClusters",
+                "cs:InstallClusterAddons",
+                "cs:ListClusterAddonInstances",
+                "cs:ModifyCluster",
+                "cs:ModifyClusterAddon",
+                "cs:ModifyClusterNodePool",
+                "cs:RunClusterCheck",
+                "cs:TagResources",
+                "cs:UnInstallClusterAddons",
+                "cs:UntagResources",
+                "cs:UpdateControlPlaneLog",
+                "cs:UpgradeCluster"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
+                "ecs:AddTags",
+                "ecs:AllocatePublicIpAddress",
+                "ecs:CreateInstance",
+                "ecs:DeleteInstance",
+                "ecs:DescribeAvailableResource",
+                "ecs:DescribeDedicatedHosts",
+                "ecs:DescribeDisks",
+                "ecs:DescribeImageSupportInstanceTypes",
+                "ecs:DescribeImages",
+                "ecs:DescribeInstanceAutoRenewAttribute",
+                "ecs:DescribeInstanceRamRole",
+                "ecs:DescribeInstances",
+                "ecs:DescribeKeyPairs",
+                "ecs:DescribeNetworkInterfaces",
+                "ecs:DescribePrice",
+                "ecs:DescribeSecurityGroupAttribute",
+                "ecs:DescribeSecurityGroups",
+                "ecs:DescribeSnapshots",
+                "ecs:ModifyInstanceAttribute",
+                "ecs:RemoveTags",
+                "ecs:ReplaceSystemDisk",
+                "ecs:StartInstance",
+                "ecs:StopInstance"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
+                "pvtz:AddZone",
+                "pvtz:AddZoneRecord",
+                "pvtz:BindZoneVpc",
+                "pvtz:DeleteZone",
+                "pvtz:DeleteZoneRecord",
+                "pvtz:DescribeZoneInfo",
+                "pvtz:DescribeZoneRecords",
+                "pvtz:ListTagResources",
+                "pvtz:SetProxyPattern",
+                "pvtz:SetZoneRecordStatus",
+                "pvtz:TagResources",
+                "pvtz:UntagResources",
+                "pvtz:UpdateZoneRecord",
+                "pvtz:UpdateZoneRemark"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
+                "quotas:GetProductQuota",
+                "quotas:ListProductQuotas"
+            ],
+            "Effect": "Allow",
+            "Resource": "acs:quotas:*:*:*"
+        },
+        {
+            "Action": [
+                "ram:GetRole"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
+                "rds:DescribeDBInstances"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
+                "slb:DescribeLoadBalancers"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
+                "tag:TagResources",
+                "tag:UntagResources"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
+                "vpc:AssociateVpcCidrBlock",
+                "vpc:CreateVSwitch",
+                "vpc:CreateVpc",
+                "vpc:DeleteVSwitch",
+                "vpc:DeleteVpc",
+                "vpc:DescribeNatGateways",
+                "vpc:DescribeVSwitchAttributes",
+                "vpc:DescribeVSwitches",
+                "vpc:DescribeVpcAttribute",
+                "vpc:DescribeVpcs",
+                "vpc:DescribeVpnGateways",
+                "vpc:DescribeZones",
+                "vpc:ListTagResources",
+                "vpc:ModifyVSwitchAttribute",
+                "vpc:ModifyVpcAttribute",
+                "vpc:TagResources",
+                "vpc:UnTagResources"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
+                "ros:CreateStack",
+                "ros:GetStack",
+                "ros:UpdateStack",
+                "ros:ListStackEvents",
+                "ros:ListStackResources",
+                "ros:ListStackResources",
+                "ros:DeleteStack",
+                "ram:GetRole"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        }
+    ],
+    "Version": "1"
+}
