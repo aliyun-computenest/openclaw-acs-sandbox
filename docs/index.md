@@ -62,8 +62,8 @@ Examples:
 - AliyunComputeNestUserFullAccess：管理计算巢服务（ComputeNest）的用户侧权限，
 - AliyunROSFullAccess：管理资源编排服务（ROS）的权限。
  **自定义权限策略：**
-- 测试环境权限策略：[policy_test.json](policy_test.json)
-- 生产环境权限策略：[policy_prod.json](policy_prod.json)
+- 测试环境权限策略：[policy_test.json](https://github.com/aliyun-computenest/openclaw-acs-sandbox/blob/main/docs/policy_test.json)
+- 生产环境权限策略：[policy_prod.json](https://github.com/aliyun-computenest/openclaw-acs-sandbox/blob/main/docs/policy_prod.json)
  
 
 ## 部署流程
