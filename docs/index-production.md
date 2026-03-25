@@ -151,26 +151,32 @@
 
 > Service CIDR 不能与 VPC 网段和已有集群网段重复，创建后不可修改。
 
-### 步骤 7：配置 E2B 参数
+### 步骤 7：配置 Sandbox 参数
 
 | 参数 | 说明 | 是否必填 |
 |------|------|---------|
-| **E2B 的访问域名** | E2B API 的访问域名 | 选填 |
+| **Sandbox 访问域名** | Sandbox API 的访问域名 | 选填 |
 | **TLS 证书** | `fullchain.pem` 证书文件 | **必填** |
 | **TLS 证书密钥** | `privkey.pem` 私钥文件 | **必填** |
 | **是否配置内网域名解析** | 自动创建 PrivateZone | 建议开启 |
-| **访问 E2B API 的 API_KEY** | E2B 管理 API 密钥 | 选填 |
+| **PrivateZone 创建方式** | 新建或复用已有 PrivateZone（仅 ExistingVPC + 开启内网域名解析时显示）。若该 VPC 下已存在同名域名的 PrivateZone，请选择"复用已有" | 默认新建 |
+| **Sandbox API 访问密钥** | 访问 Sandbox 管理 API 的密钥 | 选填 |
 | **Sandbox Manager CPU** | sandbox-manager CPU 资源 | 默认即可 |
 | **Sandbox Manager 内存** | sandbox-manager 内存资源 | 默认即可 |
-| **是否支持公网访问** | ALB 开启公网访问 | 根据需求 |
+| **Sandbox Manager 调度到虚拟节点** | 是否将 Sandbox Manager 调度到虚拟节点（ACS 模式），启用后 Sandbox Manager 将运行在 Serverless 虚拟节点上 | 默认开启 |
+| **为 ALB 指定独立交换机** | 开启后可为 ALB 单独指定交换机，与集群节点交换机隔离（仅 ExistingVPC 场景生效） | 选填 |
+| **ALB 交换机ID（可用区1）** | ALB 在可用区 1 使用的专用交换机，须属于同一 VPC | 选填（开启独立交换机后必填） |
+| **ALB 交换机ID（可用区2）** | ALB 在可用区 2 使用的专用交换机，须属于同一 VPC | 选填（开启独立交换机后必填） |
 
 ### 步骤 8：配置 OpenClaw 参数
 
 | 参数 | 说明 | 是否必填 |
 |------|------|---------|
-| **Sandbox 命名空间** | SandboxSet 和 TestPod 所在的命名空间 | 默认 `default` |
+| **Sandbox 命名空间** | SandboxSet（OpenClaw Pod）和 TestPod 所在的 Kubernetes 命名空间，sandbox-manager 固定部署在 sandbox-system 不受此参数影响 | 默认 `default` |
 | **百炼 API-KEY** | 百炼模型服务的 API Key | 选填 |
 | **OpenClaw 访问 Token** | 访问 OpenClaw 服务的 Token | 选填 |
+| **OpenClaw 预热副本数** | SandboxSet 预热池中的沙箱副本数量 | 默认 `1` |
+| **OpenClaw 镜像** | OpenClaw 容器镜像地址 | 默认使用内置镜像 |
 
 ### 步骤 9：确认并创建
 
@@ -225,10 +231,31 @@ spec:
         app: openclaw
       annotations:
         ops.alibabacloud.com/pause-enabled: "true"
+        k8s.aliyun.com/eci-network-policy-enable: "true"  # 启用 ECI 网络策略
+        network.alibabacloud.com/enable-network-policy-agent: "true"  # 启用网络策略 Agent
+        network.alibabacloud.com/network-policy-mode: "traffic-policy"  # 使用 Poseidon TrafficPolicy 模式
     spec:
       restartPolicy: Always
       automountServiceAccountToken: false
       enableServiceLinks: false
+      dnsPolicy: None
+      dnsConfig:
+        nameservers:
+          - "100.100.2.136"
+          - "100.100.2.138"
+        searches:
+          - default.svc.cluster.local
+          - svc.cluster.local
+          - cluster.local
+        options:
+          - name: ndots
+            value: "5"
+      nodeSelector:
+        type: virtual-kubelet
+      tolerations:
+        - key: virtual-kubelet.io/provider
+          operator: Exists
+          effect: NoSchedule
       initContainers:
         - name: init
           image: registry-cn-hangzhou.ack.aliyuncs.com/acs/agent-runtime:v0.0.2
@@ -271,7 +298,7 @@ spec:
           startupProbe:
             tcpSocket:
               port: 18789
-            initialDelaySeconds: 5
+            initialDelaySeconds: 30
             periodSeconds: 5
             failureThreshold: 30
           lifecycle:
@@ -292,6 +319,12 @@ spec:
 *   `template.spec.enableServiceLinks: false` — Pod 不注入 Service 环境变量
 *   `template.metadata.labels.alibabacloud.com/acs: "true"` — 使用 ACS 算力
 *   `template.metadata.annotations.ops.alibabacloud.com/pause-enabled: "true"` — 支持 pause/connect 动作
+*   `template.metadata.annotations.k8s.aliyun.com/eci-network-policy-enable: "true"` — 启用 ECI 网络策略
+*   `template.metadata.annotations.network.alibabacloud.com/enable-network-policy-agent: "true"` — 启用网络策略 Agent
+*   `template.metadata.annotations.network.alibabacloud.com/network-policy-mode: "traffic-policy"` — 使用 Poseidon TrafficPolicy 模式实现网络隔离
+*   `template.spec.dnsPolicy: None` + `dnsConfig` — 自定义 DNS 配置，使用阿里云内网 DNS 服务器
+*   `template.spec.nodeSelector.type: virtual-kubelet` — 调度到 VirtualNode（ACS 弹性算力）
+*   `template.spec.tolerations` — 容忍 VirtualNode 的 NoSchedule 污点
 *   `template.spec.initContainer` — 下载并 copy envd 的环境，保留即可
 *   `template.spec.initContainers.restartPolicy: Always`
 *   `template.spec.containers.securityContext.runAsNonRoot: true` — Pod 使用普通用户启动
