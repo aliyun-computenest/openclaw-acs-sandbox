@@ -20,6 +20,33 @@ Conditions:
       - true
       - Ref: EnableCustomAlbVSwitch
 Parameters:
+  # ==================== 前置确认 ====================
+  WhitelistConfirmation:
+    Type: "String"
+    Label:
+      en: "Whitelist Confirmation"
+      zh-cn: "白名单配置确认"
+    AssociationProperty: "AlertCheckbox"
+    Default: false
+    AssociationPropertyMetadata:
+      Description:
+        zh-cn: |
+          为确保全流程顺利使用本服务，请确保加入以下技术支持群：
+          <br/>
+          1. 服务实例创建后进技术支持群，扫码进<a href="https://service-info-public.oss-cn-hangzhou.aliyuncs.com/openclaw-acs-tech-support.png" target="_blank">钉钉群</a>
+          <br/>
+        en: |
+          To ensure smooth end-to-end usage of this service, please join the following tech support group:
+          <br/>
+          1. Join DingTalk group after service instance creation, scan QR code to join <a href="https://service-info-public.oss-cn-hangzhou.aliyuncs.com/openclaw-acs-tech-support.png" target="_blank">DingTalk group</a>
+          <br/>
+      ConfirmText:
+        zh-cn: "我已知晓，部署完成后将加入技术支持群"
+        en: "I acknowledge and will join the tech support group after deployment"
+      Alert: true
+      Type: "warning"
+      MustChecked: true
+
   ZoneId1:
     Type: String
     AssociationProperty: ALIYUN::ECS::Instance:ZoneId
@@ -493,8 +520,8 @@ Parameters:
   E2BDomainAddress:
     Type: String
     Label:
-      en: E2B Domain
-      zh-cn: E2B 的访问域名
+      en: Sandbox Domain
+      zh-cn: Sandbox 访问域名
     Description:
       en: Please enter a valid domain name
       zh-cn: 请输入有效的域名
@@ -536,8 +563,8 @@ Parameters:
   AdminApiKey:
     Type: String
     Label:
-      zh-cn: 访问E2B API的E2B_API_KEY
-      en: E2B_API_KEY for accessing E2B API
+      zh-cn: Sandbox API 访问密钥
+      en: API Key for Sandbox Access
     AssociationProperty: AutoCompleteInput
     AssociationPropertyMetadata:
       Length: 32
@@ -914,7 +941,7 @@ Resources:
     Type: ALIYUN::CS::ClusterApplication
     DependsOn:
       - ClusterAppliaction
-      - AddonSleep
+      - LoongCollectorSleep
     Properties:
       DefaultNamespace: default
       ClusterId:
@@ -1216,10 +1243,10 @@ Resources:
           - Fn::GetAtt:
               - AlbDataSource
               - LoadBalancers
-  # ========== LoongCollector 日志采集器（放在最后，避免阻塞主流程）==========
+  # ========== LoongCollector 日志采集器（在 SandboxSet 之前部署，确保组件注入顺序正确）==========
   LoongCollectorAddon:
     Type: ALIYUN::CS::ClusterAddons
-    DependsOn: OpenClawSandboxSet
+    DependsOn: AddonSleep
     Properties:
       ClusterId:
         Fn::GetAtt:
@@ -1250,7 +1277,9 @@ Resources:
             spec:
               config:
                 aggregators: []
-                global: {}
+                global:
+                  TopicType: filepath
+                  TopicFormat: .*/sessions/(?P<__session_id__>.*?).jsonl
                 inputs:
                   - Type: input_file
                     FilePaths:
@@ -1360,12 +1389,12 @@ Outputs:
         - AckOrAcsCluster
         - ClusterId
   E2B_API_KEY:
-    Label: 访问E2B API的E2B_API_KEY
+    Label: Sandbox API 访问密钥
     Value:
       Ref: AdminApiKey 
     NoEcho: true  
   E2B_DOMAIN:
-    Label: 访问E2B API的域名
+    Label: Sandbox 访问域名
     Value:
       Ref: E2BDomainAddress
 
@@ -1376,6 +1405,11 @@ Metadata:
       - OpenClawImage
       - OpenClawReplicas
     ParameterGroups:
+      - Parameters:
+          - WhitelistConfirmation
+        Label:
+          en: Notice Item
+          zh-cn: 注意事项
       - Parameters:
           - ZoneId1
           - ZoneId2
@@ -1417,8 +1451,8 @@ Metadata:
           - SandboxManagerMemory
           - EnablePublicIp
         Label:
-          en: E2B  Configuration
-          zh-cn: E2B 配置
+          en: Sandbox Configuration
+          zh-cn: Sandbox 配置
       - Parameters:
           - BaiLianApiKey
           - OpenClawGatewayToken

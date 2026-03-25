@@ -45,6 +45,17 @@ Conditions:
       - Fn::Equals:
           - ExistingVPC
           - Ref: VpcOption
+  # OpenClaw VSwitch3 与 VSwitch2 不同时，才需要创建第3个路由表关联和SNAT规则
+  # NewVPC 场景下一定不同（自动创建3个不同VSwitch）；ExistingVPC 场景下需要判断用户选择
+  OpenClawVSwitch3NeedsRouteTable:
+    Fn::Or:
+      - Fn::Equals:
+          - NewVPC
+          - Ref: VpcOption
+      - Fn::Not:
+          Fn::Equals:
+            - Ref: OpenClawVSwitchId2
+            - Ref: OpenClawVSwitchId3
 Parameters:
   # ==================== 可用区配置（3 可用区） ====================
   ZoneId1:
@@ -260,6 +271,10 @@ Parameters:
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId1}'
+      ExclusiveTo:
+        - OpenClawVSwitchId1
+        - OpenClawVSwitchId2
+        - OpenClawVSwitchId3
       Visible:
         Condition:
           Fn::Equals:
@@ -279,6 +294,10 @@ Parameters:
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId2}'
+      ExclusiveTo:
+        - OpenClawVSwitchId1
+        - OpenClawVSwitchId2
+        - OpenClawVSwitchId3
       Visible:
         Condition:
           Fn::Equals:
@@ -298,6 +317,10 @@ Parameters:
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId3}'
+      ExclusiveTo:
+        - OpenClawVSwitchId1
+        - OpenClawVSwitchId2
+        - OpenClawVSwitchId3
       Visible:
         Condition:
           Fn::Equals:
@@ -375,6 +398,10 @@ Parameters:
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId1}'
+      ExclusiveTo:
+        - VSwitchId1
+        - VSwitchId2
+        - VSwitchId3
       Visible:
         Condition:
           Fn::Equals:
@@ -394,6 +421,10 @@ Parameters:
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId2}'
+      ExclusiveTo:
+        - VSwitchId1
+        - VSwitchId2
+        - VSwitchId3
       Visible:
         Condition:
           Fn::Equals:
@@ -413,6 +444,10 @@ Parameters:
     AssociationPropertyMetadata:
       VpcId: '${VpcId}'
       ZoneId: '${ZoneId3}'
+      ExclusiveTo:
+        - VSwitchId1
+        - VSwitchId2
+        - VSwitchId3
       Visible:
         Condition:
           Fn::Equals:
@@ -1642,7 +1677,6 @@ Resources:
               - VSwitchId
           - Ref: OpenClawVSwitchId1
 
-  # 链式依赖 Association1，避免多个路由表关联并发操作同一 VSwitch 导致中间态报错
   OpenClawRouteTableAssociation2:
     Type: ALIYUN::VPC::RouteTableAssociation
     DependsOn:
@@ -1661,9 +1695,9 @@ Resources:
               - VSwitchId
           - Ref: OpenClawVSwitchId2
 
-  # 链式依赖 Association2，避免多个路由表关联并发操作同一 VSwitch 导致中间态报错
   OpenClawRouteTableAssociation3:
     Type: ALIYUN::VPC::RouteTableAssociation
+    Condition: OpenClawVSwitch3NeedsRouteTable
     DependsOn:
       - OpenClawRouteEntry
       - OpenClawRouteTableAssociation2
@@ -1703,12 +1737,9 @@ Resources:
       SnatEntryName: openclaw-snat-vsw1
 
   # SNAT 规则：OpenClaw VSwitch2 流量走独立 NAT
-  # 链式依赖 SnatEntry1，避免多个 SNAT 规则并发操作同一 VSwitch 导致中间态报错
   OpenClawSnatEntry2:
     Type: ALIYUN::VPC::SnatEntry
-    DependsOn:
-      - OpenClawNatEipAssociation
-      - OpenClawSnatEntry1
+    DependsOn: OpenClawNatEipAssociation
     Properties:
       SnatTableId:
         Fn::GetAtt:
@@ -1728,12 +1759,10 @@ Resources:
       SnatEntryName: openclaw-snat-vsw2
 
   # SNAT 规则：OpenClaw VSwitch3 流量走独立 NAT
-  # 链式依赖 SnatEntry2，避免多个 SNAT 规则并发操作同一 VSwitch 导致中间态报错
   OpenClawSnatEntry3:
     Type: ALIYUN::VPC::SnatEntry
-    DependsOn:
-      - OpenClawNatEipAssociation
-      - OpenClawSnatEntry2
+    Condition: OpenClawVSwitch3NeedsRouteTable
+    DependsOn: OpenClawNatEipAssociation
     Properties:
       SnatTableId:
         Fn::GetAtt:
@@ -2129,7 +2158,7 @@ Resources:
     Type: DATASOURCE::PVTZ::Zones
     DependsOn: OpenClawSandboxSet
     Properties:
-      VpcId:
+      QueryVpcId:
         Ref: VpcId
       RefreshOptions: Always
   # Step 2: 用 Fn::Jq 过滤出与 E2BDomainAddress 同名的 Zone，获取其 ZoneId
@@ -2168,14 +2197,21 @@ Resources:
               - Zones
       Vpcs:
         Fn::ListMerge:
-          - Fn::Jq:
-              - First
-              - '[.[] | {VpcId: .VpcId, RegionId: .RegionId}]'
-              - Fn::GetAtt:
-                  - ExistingZoneInfo
-                  - BindVpcs
+          - Fn::Select:
+              - 0
+              - Fn::Jq:
+                  - All
+                  - '[.[] | {VpcId: .VpcId, RegionId: .RegionId}]'
+                  - Fn::GetAtt:
+                      - ExistingZoneInfo
+                      - BindVpcs
           - - VpcId:
-                Ref: VpcId
+                Fn::If:
+                  - CreateNewVpcCondition
+                  - Fn::GetAtt:
+                      - Vpc
+                      - VpcId
+                  - Ref: VpcId
               RegionId:
                 Ref: ALIYUN::Region
   # Step 5: 在已有 Zone 中创建 CNAME 记录（指向 ALB）
