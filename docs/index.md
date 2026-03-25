@@ -239,7 +239,7 @@ spec:
 
 ## 访问 OpenClaw Web UI
 
-部署完成后，可以通过浏览器直接访问 OpenClaw 沙箱的 Web 控制台。
+部署完成后，可以通过浏览器直接访问 OpenClaw 沙箱的 Web 控制台。需要通过testopenclaw.py创建的sandbox才可以直接访问，sandboxset里的预热的sandbox无法直接访问，请参考testopenclaw.py里创建sandbox
 
 ### 域名格式说明
 
