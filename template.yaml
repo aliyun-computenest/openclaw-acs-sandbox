@@ -19,6 +19,10 @@ Conditions:
     Fn::Equals:
       - true
       - Ref: EnableCustomAlbVSwitch
+  EnableCmsObservabilityCondition:
+    Fn::Equals:
+      - true
+      - Ref: EnableCmsObservability
 Parameters:
   # ==================== 前置确认 ====================
   WhitelistConfirmation:
@@ -684,6 +688,91 @@ Parameters:
       zh-cn: 是否配置内网域名解析
       en: Weather to enable the configuration for internal network domain name resolution
     Default: true
+  # ==================== CMS 可观测性配置 ====================
+  EnableCmsObservability:
+    Type: Boolean
+    Label:
+      en: Enable CMS Observability
+      zh-cn: 启用云监控可观测性
+    Description:
+      zh-cn: 启用后将通过无侵入方式接入阿里云云监控2.0（ARMS），自动采集 OpenClaw 的 Trace、Metrics 等可观测数据。需要提前在云监控2.0控制台创建工作空间。
+      en: When enabled, OpenClaw will be instrumented with Alibaba Cloud CMS 2.0 (ARMS) for automatic trace and metrics collection. Requires a pre-created CMS 2.0 workspace.
+    Default: false
+  CmsArmsLicenseKey:
+    Type: String
+    Label:
+      en: ARMS License Key
+      zh-cn: ARMS 鉴权 License Key
+    Description:
+      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 authToken 字段。可在云监控2.0控制台的接入中心获取。
+      en: Obtained from CMS 2.0 GetServiceObservability API, the authToken field in entryPointInfo.
+    Default: ''
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
+  CmsArmsProject:
+    Type: String
+    Label:
+      en: ARMS Project
+      zh-cn: ARMS 项目名
+    Description:
+      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 project 字段。
+      en: Obtained from CMS 2.0 GetServiceObservability API, the project field in entryPointInfo.
+    Default: ''
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
+  CmsWorkspaceName:
+    Type: String
+    Label:
+      en: CMS Workspace Name
+      zh-cn: 云监控工作空间名称
+    Description:
+      zh-cn: 云监控2.0工作空间名称。如不填写，将使用默认工作空间 default-cms-${主账号UID}-${RegionId}。可在云监控2.0控制台查看。
+      en: CMS 2.0 workspace name. If empty, defaults to default-cms-${AccountUID}-${RegionId}.
+    Default: ''
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
+  CmsServiceName:
+    Type: String
+    Label:
+      en: CMS Service Name
+      zh-cn: 应用监控服务名
+    Description:
+      zh-cn: 上报到云监控2.0应用监控的服务名称，用户可自定义。
+      en: Service name reported to CMS 2.0 application monitoring, user-defined.
+    Default: openclaw
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
+  CmsEndpoint:
+    Type: String
+    Label:
+      en: CMS Endpoint
+      zh-cn: CMS 上报端点
+    Description:
+      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 publicDomain 或 privateDomain 字段。
+      en: Obtained from CMS 2.0 GetServiceObservability API, the publicDomain or privateDomain field in entryPointInfo.
+    Default: ''
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
 Resources:
   VpcModule:
     Type: MODULE::ACS::ComputeNest::VpcAndVSwitch
@@ -993,6 +1082,12 @@ Resources:
                     - name: openclaw
                       image: "${OpenClawImage}"
                       imagePullPolicy: IfNotPresent
+                      command:
+                        - /bin/sh
+                        - -c
+                        - |
+                          ${CmsInstallCommand}
+                          exec /usr/local/bin/docker-entrypoint.sh
                       securityContext:
                         readOnlyRootFilesystem: false
                         runAsGroup: 0
@@ -1044,6 +1139,22 @@ Resources:
               Ref: BaiLianApiKey
             OpenClawGatewayToken:
               Ref: OpenClawGatewayToken
+            CmsInstallCommand:
+              Fn::If:
+                - EnableCmsObservabilityCondition
+                - Fn::Sub:
+                    - 'wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget.sh | bash -s -- --x-arms-license-key "${LicenseKey}" --x-arms-project "${ArmsProject}" --x-cms-workspace "${WorkspaceName}" --serviceName "${ServiceName}" --endpoint "${Endpoint}"'
+                    - LicenseKey:
+                        Ref: CmsArmsLicenseKey
+                      ArmsProject:
+                        Ref: CmsArmsProject
+                      WorkspaceName:
+                        Ref: CmsWorkspaceName
+                      ServiceName:
+                        Ref: CmsServiceName
+                      Endpoint:
+                        Ref: CmsEndpoint
+                - 'echo "CMS observability disabled, skipping ARMS injection"'
       WaitUntil:
         # 等待 SandboxSet 至少有一个可用副本
         # 超时 300 秒（5分钟）- 如果超时请检查：
@@ -1459,3 +1570,13 @@ Metadata:
         Label:
           en: OpenClaw Configuration
           zh-cn: OpenClaw 默认配置
+      - Parameters:
+          - EnableCmsObservability
+          - CmsArmsLicenseKey
+          - CmsArmsProject
+          - CmsWorkspaceName
+          - CmsServiceName
+          - CmsEndpoint
+        Label:
+          en: CMS Observability
+          zh-cn: 云监控可观测性配置

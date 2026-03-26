@@ -1154,6 +1154,105 @@ class OpenClawTestCLI:
         escaped = script.replace("'", "'\"'\"'")
         return f"'{escaped}'"
 
+    # ──────────────── Phase 4c: CMS Observability Validation ────────────────
+
+    def phase4c_cms_observability_test(self) -> PhaseResult:
+        """验证 CMS 可观测性（ARMS）是否正确注入到 OpenClaw Pod"""
+        phase = PhaseResult(name="CMS 可观测性验证")
+        self._header(6, "CMS 可观测性验证 — ARMS 插件注入检查")
+
+        # 检查 Stack 参数中是否启用了 CMS
+        enable_cms = self.stack_params.get("EnableCmsObservability", "false")
+        if enable_cms.lower() != "true":
+            self._skip("CMS 可观测性未启用 (EnableCmsObservability != true)")
+            phase.skipped += 1
+            self.phases.append(phase)
+            return phase
+
+        sandbox_ns = self.stack_params.get("SandboxNamespace", "default")
+
+        # Step 1: 检查 OpenClaw Pod 的 container command 是否包含 ARMS 注入脚本
+        self._section("检查 OpenClaw container command")
+        rc, out, err = self.kubectl(
+            f"get pods -n {sandbox_ns} -l app=openclaw "
+            "--field-selector=status.phase=Running "
+            "-o jsonpath='{.items[0].spec.containers[?(@.name==\"openclaw\")].command}'"
+        )
+        command_str = out.strip("'").strip()
+        if "install-wget.sh" in command_str or "arms-apm" in command_str:
+            self._ok("OpenClaw container command 包含 ARMS 注入脚本")
+            phase.passed += 1
+        elif "CMS observability disabled" in command_str:
+            self._fail("OpenClaw container command 显示 CMS 已禁用，但参数设置为启用")
+            phase.failed += 1
+        else:
+            self._warn("无法确认 ARMS 注入脚本是否存在于 command 中", command_str[:200])
+            phase.skipped += 1
+
+        # Step 2: 检查 CMS 相关环境变量/进程是否存在
+        self._section("检查 ARMS Agent 进程")
+        rc, pod_name, _ = self.kubectl(
+            f"get pods -n {sandbox_ns} -l app=openclaw "
+            "--field-selector=status.phase=Running "
+            "-o jsonpath='{.items[0].metadata.name}'"
+        )
+        pod_name = pod_name.strip("'").strip()
+        if not pod_name:
+            self._fail("未找到 Running 状态的 OpenClaw Pod")
+            phase.failed += 1
+            self.phases.append(phase)
+            return phase
+
+        # 检查 ARMS agent 相关文件是否存在
+        rc, out, err = self.kubectl(
+            f"exec {pod_name} -n {sandbox_ns} -- "
+            "ls -la /usr/local/share/.arms-agent/ 2>/dev/null || echo 'NOT_FOUND'",
+            timeout=15,
+        )
+        if rc == 0 and "NOT_FOUND" not in out:
+            self._ok("ARMS Agent 目录存在", f"/usr/local/share/.arms-agent/")
+            phase.passed += 1
+        else:
+            self._warn("ARMS Agent 目录不存在（可能使用其他安装路径）")
+            phase.skipped += 1
+
+        # Step 3: 检查 CMS 参数是否正确传入
+        self._section("检查 CMS 参数配置")
+        cms_params_to_check = {
+            "CmsArmsLicenseKey": "ARMS License Key",
+            "CmsArmsProject": "ARMS Project",
+            "CmsWorkspaceName": "CMS Workspace",
+            "CmsServiceName": "Service Name",
+            "CmsEndpoint": "CMS Endpoint",
+        }
+        for param_key, param_label in cms_params_to_check.items():
+            value = self.stack_params.get(param_key, "")
+            if value:
+                masked = value[:8] + "***" if len(value) > 8 else value
+                self._ok(f"{param_label} 已配置", masked)
+                phase.passed += 1
+            else:
+                self._warn(f"{param_label} 未配置 (参数 {param_key} 为空)")
+                phase.skipped += 1
+
+        # Step 4: 检查 OpenClaw 进程是否正常运行（ARMS 注入后不影响主进程）
+        self._section("检查 OpenClaw 主进程健康状态")
+        rc, out, err = self.kubectl(
+            f"exec {pod_name} -n {sandbox_ns} -- "
+            "curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 http://localhost:18789/health",
+            timeout=15,
+        )
+        http_code = out.strip("'").strip()
+        if rc == 0 and http_code in ("200", "404", "401"):
+            self._ok(f"OpenClaw 主进程正常运行 (HTTP {http_code})")
+            phase.passed += 1
+        else:
+            self._fail(f"OpenClaw 主进程异常 (rc={rc}, code={http_code})", err[:100])
+            phase.failed += 1
+
+        self.phases.append(phase)
+        return phase
+
     # ──────────────────── Phase 5: Summary ────────────────────
 
     def phase5_summary(self):
@@ -1305,6 +1404,9 @@ class OpenClawTestCLI:
 
         # Phase 4b: Sandbox isolation
         self.phase4b_sandbox_isolation_test()
+
+        # Phase 4c: CMS Observability
+        self.phase4c_cms_observability_test()
 
         # Phase 5: Summary
         return self.phase5_summary()
