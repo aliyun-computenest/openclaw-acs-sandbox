@@ -7,8 +7,9 @@ WORKDIR /app
 
 COPY entrypoint.py /app/.internal/entrypoint.py
 COPY testopenclaw.py /app/testopenclaw.py
+COPY openclaw_template.json /app/openclaw_template.json
 
-RUN pip3 install --no-cache-dir python-dotenv requests e2b-code-interpreter && \
+RUN pip3 install --no-cache-dir python-dotenv requests e2b-code-interpreter e2b-desktop && \
     chmod +x /app/.internal/entrypoint.py
 
 ENTRYPOINT ["python3", "/app/.internal/entrypoint.py"]

@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import os
 import time
 import requests
+from string import Template
 from e2b_code_interpreter import Sandbox
 
 def main():
@@ -17,22 +18,33 @@ def main():
     start_time = time.monotonic()
     sandbox = Sandbox.create(
         'openclaw',
-        timeout=1800,
-        envs={
-            "DASHSCOPE_API_KEY": os.environ.get("DASHSCOPE_API_KEY", ""),
-            "GATEWAY_TOKEN": os.environ.get("GATEWAY_TOKEN", "clawdbot-mode-123456"),
-        },
         metadata={
             "e2b.agents.kruise.io/never-timeout": "true"
         }
     )
     print(f"创建 sandbox 耗时: {time.monotonic() - start_time:.2f} 秒")
     print(f"Sandbox ID: {sandbox.sandbox_id}")
-    sandbox.files.write("/tmp/test.txt", "Hello, World!")
+
+    # 基于环境变量中的 GATEWAY_TOKEN, DASHSCOPE_API_KEY, EXTERNAL_ACCESS_DOMAIN 读取
+    GATEWAY_TOKEN = os.environ.get("GATEWAY_TOKEN", "clawdbot-mode-123456")
+    DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "sk-****")
+
+    #渲染 openclaw-template.json 文件， 并将渲染后的文件覆盖沙盒中 /root/.openclaw/openclaw.json 的内容，触发openclaw重启更新配置
+    template_path = "openclaw_template.json"
+    with open(template_path, "r") as f:
+        template_content = f.read()
+
+    rendered_content = Template(template_content).safe_substitute(
+        GATEWAY_TOKEN=GATEWAY_TOKEN,
+        DASHSCOPE_API_KEY=DASHSCOPE_API_KEY,
+    )
+    
+    sandbox.files.write("/root/.openclaw/openclaw.json", rendered_content)
+    print("已将渲染后的配置写入沙盒 /root/.openclaw/openclaw.json")
 
     # 等待几秒让服务启动
-    print("等待 3 秒让 gateway 启动...")
-    time.sleep(3)
+    print("等待 30 秒让 gateway 启动...")
+    time.sleep(30)
 
     # 步骤3: 等待服务就绪
     print("\n[步骤3] 等待服务就绪...")
@@ -45,7 +57,7 @@ def main():
     while True:
         try:
             response = requests.get(
-                f"{base_url}/?token=clawdbot-mode-123456",
+                f"{base_url}/?token={GATEWAY_TOKEN}",
                 verify=False,
                 timeout=5
             )
@@ -59,7 +71,7 @@ def main():
             print(f"连接错误: {e}")
         except requests.Timeout:
             print("请求超时，继续等待...")
-        time.sleep(0.5)
+        time.sleep(10)
         print("waiting...")
 
     print(f"等待就绪总耗时: {time.monotonic() - start_time:.2f} 秒")
