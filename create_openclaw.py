@@ -75,10 +75,7 @@ def main():
         time.sleep(20)
         print("waiting...")
 
-    print(f"等待就绪总耗时: {time.monotonic() - start_time:.2f} 秒")
-
-    # 步骤4: 暂停前等待服务完全稳定
-    print(f"服务已就绪等待就绪总耗时: {time.monotonic() - start_time:.2f} 秒)
+    print(f"服务已就绪,等待就绪总耗时: {time.monotonic() - start_time:.2f} 秒")
 
 
 if __name__ == "__main__":
