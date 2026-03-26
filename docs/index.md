@@ -239,7 +239,7 @@ spec:
 
 ## 访问 OpenClaw Web UI
 
-部署完成后，可以通过浏览器直接访问 OpenClaw 沙箱的 Web 控制台。
+部署完成后，可以通过浏览器直接访问 OpenClaw 沙箱的 Web 控制台。需要通过testopenclaw.py创建的sandbox才可以直接访问，sandboxset里的预热的sandbox无法直接访问，请参考testopenclaw.py里创建sandbox
 
 ### 域名格式说明
 
@@ -354,60 +354,6 @@ curl --cacert fullchain.pem -X POST --location "https://api.agent-vpc.infra/sand
 
 当返回结果的json中，存在 "sandboxID" 且 "state":"running"，可以认为e2b服务已运行
 
-### 通过集群内 TestPod 创建（快速验证）
-
-部署完成后，集群内会自动创建 `acs-sandbox-test-pod`，可以直接通过它调用 sandbox-manager 内部接口 claim 一个沙箱，无需配置证书和域名解析：
-
-```bash
-# ⚠️ 重要：必须将 <E2B_API_KEY> 替换为实际的 API Key！
-# API Key 可在计算巢服务实例详情页的 E2B_API_KEY 字段找到
-kubectl exec -n default acs-sandbox-test-pod -- curl -s -X POST \
-  "http://sandbox-manager.sandbox-system:8080/sandboxes" \
-  -H "X-API-Key: 你的实际API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"templateID":"openclaw","timeout":1800}'
-```
-
-> ⚠️ **常见错误**：如果返回 `sandboxID: None, state: None`，说明 API Key 未正确替换。请确保将命令中的占位符替换为计算巢服务实例详情页显示的实际 `E2B_API_KEY` 值。
-
-返回示例：
-```json
-{
-  "sandboxID": "openclaw-abc12",
-  "clientID": "...",
-  "templateID": "openclaw",
-  "state": "running"
-}
-```
-
-> ⚠️ **重要**：必须通过 E2B API（`POST /sandboxes`）正式 claim 沙箱，sandbox-manager 内部路由状态才会从 `available` 变为 `running`。手动 patch K8s label 不会改变内部路由状态，直接访问未 claim 的沙箱会返回 502 错误。
-
-**Claim 后访问 Web UI 的一键脚本**：
-
-```bash
-# 1. Claim sandbox
-RESULT=$(kubectl exec -n default acs-sandbox-test-pod -- curl -s -X POST \
-  "http://sandbox-manager.sandbox-system:8080/sandboxes" \
-  -H "X-API-Key: <E2B_API_KEY>" \
-  -H "Content-Type: application/json" \
-  -d '{"templateID":"openclaw","timeout":1800}')
-echo "Claim 结果: $RESULT"
-
-# 2. 提取 sandboxID
-SANDBOX_ID=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['sandboxID'])")
-echo "Sandbox ID: $SANDBOX_ID"
-
-# 3. 获取 ALB IP（通过 Ingress 或 dig ALB 域名）
-ALB_IP=$(kubectl get ingress -n sandbox-system sandbox-manager -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-echo "ALB IP: $ALB_IP"
-
-# 4. 添加 hosts 记录（替换 <e2b-domain> 为实际域名，如 agent-vpc.infra）
-DOMAIN="18789-default--${SANDBOX_ID}.<e2b-domain>"
-sudo sh -c "echo '${ALB_IP} ${DOMAIN}' >> /etc/hosts"
-echo "已添加 hosts: ${ALB_IP} ${DOMAIN}"
-
-# 5. 浏览器访问（替换 <gateway-token> 为 SandboxSet 中的 GATEWAY_TOKEN）
-echo "访问地址: https://${DOMAIN}?token=<gateway-token>"
 ```
 
 ### 通过e2b sdk创建一个沙箱
@@ -446,11 +392,6 @@ def main():
     start_time = time.monotonic()
     sandbox = Sandbox.create(
         'openclaw',
-        timeout=1800,
-        envs={
-            "DASHSCOPE_API_KEY": os.environ.get("DASHSCOPE_API_KEY", ""),
-            "GATEWAY_TOKEN": os.environ.get("GATEWAY_TOKEN", "clawdbot-mode-123456"),
-        },
         metadata={
             "e2b.agents.kruise.io/never-timeout": "true"
         }
