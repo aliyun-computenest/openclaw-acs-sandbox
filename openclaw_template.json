@@ -1,0 +1,53 @@
+{
+    "agents": {
+        "defaults": {
+            "model": {
+                "primary": "bailian/qwen3.5-plus"
+            },
+            "workspace": "/root/.openclaw/workspace"
+        }
+    },
+    "models": {
+        "mode": "merge",
+        "providers": {
+            "bailian": {
+                "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "apiKey": "${DASHSCOPE_API_KEY}",
+                "api": "openai-completions",
+                "models": [
+                    {
+                        "id": "qwen3.5-plus",
+                        "name": "通义千问",
+                        "input": [
+                            "text"
+                        ],
+                        "contextWindow": 1000000,
+                        "maxTokens": 65536
+                    }
+                ]
+            }
+        }
+    },
+    "commands": {
+        "native": "auto",
+        "nativeSkills": "auto",
+        "restart": true,
+        "ownerDisplay": "raw"
+    },
+    "gateway": {
+        "port": 18789,
+        "bind": "lan",
+        "controlUi": {
+            "allowedOrigins": [
+                "*"
+            ],
+            "dangerouslyAllowHostHeaderOriginFallback": true,
+            "allowInsecureAuth": true,
+            "dangerouslyDisableDeviceAuth": true
+        },
+        "auth": {
+            "mode": "token",
+            "token": "${GATEWAY_TOKEN}"
+        }
+    }
+}

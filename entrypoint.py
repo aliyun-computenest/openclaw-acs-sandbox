@@ -100,10 +100,6 @@ E2B_DOMAIN={e2b_domain}
 E2B_API_KEY={e2b_api_key}
 # SSL Certificate File
 SSL_CERT_FILE=./ca-fullchain.pem
-# 访问网关的token
-GATEWAY_API_KEY=
-# 值设置为自己的Dashscope API Key
-DASHSCOPE_API_KEY=
 """
 
     env_dir = os.path.dirname(ENV_FILE_OUTPUT_PATH)
