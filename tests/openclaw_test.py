@@ -787,12 +787,21 @@ class OpenClawTestCLI:
 
         self._ok(f"TestPod 状态: {pod_status}")
 
-        # Copy correct CA cert (computenest/fullchain.pem)
-        cert_path = os.path.join(PROJECT_ROOT, "computenest", "fullchain.pem")
-        if not os.path.exists(cert_path):
-            # fallback: 兼容旧目录结构
-            cert_path = os.path.join(PROJECT_ROOT, "agent-vpc.infra", "fullchain.pem")
-        if os.path.exists(cert_path):
+        # Copy correct CA cert — 按优先级搜索多个证书目录
+        # 优先使用参数文件中指定的 TLSCertFile 路径
+        cert_path = None
+        tls_cert_file = self.stack_params.get("TLSCertFile", "")
+        if tls_cert_file:
+            candidate = os.path.join(PROJECT_ROOT, tls_cert_file)
+            if os.path.exists(candidate):
+                cert_path = candidate
+        if not cert_path:
+            for cert_dir in ["codog-ca", "computenest", "agent-vpc.infra"]:
+                candidate = os.path.join(PROJECT_ROOT, cert_dir, "fullchain.pem")
+                if os.path.exists(candidate):
+                    cert_path = candidate
+                    break
+        if cert_path:
             rc, _, _ = self.run_cmd(
                 f"kubectl cp {cert_path} {sandbox_ns}/acs-sandbox-test-pod:/app/ca-fullchain.pem"
             )
@@ -801,7 +810,7 @@ class OpenClawTestCLI:
             else:
                 self._warn("更新 TestPod 证书失败，将使用容器内已有证书")
 
-        # Run E2B test inside TestPod
+        # Run E2B test inside TestPod (参照 create_openclaw.py 流程)
         self._section("E2B Sandbox 创建与验证")
         test_script = textwrap.dedent("""\
             import os, sys, time
@@ -814,15 +823,15 @@ class OpenClawTestCLI:
             from e2b_code_interpreter import Sandbox
             import json
 
+            GATEWAY_TOKEN = 'clawdbot-mode-123456'
+            DASHSCOPE_API_KEY = os.environ.get('DASHSCOPE_API_KEY', 'sk-test-placeholder')
             results = []
 
-            # 1. Create
-            print('[1/5] Creating sandbox...')
+            # 1. Create sandbox
+            print('[1/6] Creating sandbox...')
             start = time.monotonic()
             try:
                 sandbox = Sandbox.create('openclaw', timeout=1800,
-                    envs={'DASHSCOPE_API_KEY': os.environ.get('DASHSCOPE_API_KEY',''),
-                          'GATEWAY_TOKEN': 'clawdbot-mode-123456'},
                     metadata={'e2b.agents.kruise.io/never-timeout': 'true'})
                 elapsed = time.monotonic() - start
                 results.append({'test': 'sandbox_create', 'pass': True, 'msg': f'{elapsed:.1f}s, ID={sandbox.sandbox_id}'})
@@ -832,7 +841,7 @@ class OpenClawTestCLI:
                 sys.exit(0)
 
             # 2. File I/O
-            print('[2/5] Testing file I/O...')
+            print('[2/6] Testing file I/O...')
             try:
                 sandbox.files.write('/tmp/test.txt', 'Hello from E2B!')
                 content = sandbox.files.read('/tmp/test.txt')
@@ -841,12 +850,53 @@ class OpenClawTestCLI:
             except Exception as e:
                 results.append({'test': 'file_io', 'pass': False, 'msg': str(e)[:200]})
 
-            # 3. Wait for services
-            print('[3/5] Waiting for sandbox services (15s)...')
-            time.sleep(15)
+            # 3. Write openclaw.json config (参照 create_openclaw.py)
+            print('[3/6] Writing openclaw.json config...')
+            try:
+                openclaw_config = json.dumps({
+                    "agents": {
+                        "defaults": {
+                            "model": {"primary": "bailian/qwen3.5-plus"},
+                            "workspace": "/root/.openclaw/workspace"
+                        }
+                    },
+                    "models": {
+                        "mode": "merge",
+                        "providers": {
+                            "bailian": {
+                                "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                                "apiKey": DASHSCOPE_API_KEY,
+                                "api": "openai-completions",
+                                "models": [{
+                                    "id": "qwen3.5-plus", "name": "通义千问",
+                                    "input": ["text"], "contextWindow": 1000000, "maxTokens": 65536
+                                }]
+                            }
+                        }
+                    },
+                    "commands": {"native": "auto", "nativeSkills": "auto", "restart": True, "ownerDisplay": "raw"},
+                    "gateway": {
+                        "port": 18789, "bind": "lan",
+                        "controlUi": {
+                            "allowedOrigins": ["*"],
+                            "dangerouslyAllowHostHeaderOriginFallback": True,
+                            "allowInsecureAuth": True,
+                            "dangerouslyDisableDeviceAuth": True
+                        },
+                        "auth": {"mode": "token", "token": GATEWAY_TOKEN}
+                    }
+                }, indent=4)
+                sandbox.files.write('/root/.openclaw/openclaw.json', openclaw_config)
+                results.append({'test': 'config_write', 'pass': True, 'msg': 'openclaw.json written'})
+            except Exception as e:
+                results.append({'test': 'config_write', 'pass': False, 'msg': str(e)[:200]})
 
-            # 4. Gateway
-            print('[4/5] Checking gateway (port 18789)...')
+            # 4. Wait for gateway to start after config write
+            print('[4/6] Waiting 30s for gateway to start...')
+            time.sleep(30)
+
+            # 5. Check gateway
+            print('[5/6] Checking gateway (port 18789)...')
             import requests, urllib3
             urllib3.disable_warnings()
             try:
@@ -855,7 +905,7 @@ class OpenClawTestCLI:
                 gw_ok = False
                 for i in range(20):
                     try:
-                        r = requests.get(f'{url}/?token=clawdbot-mode-123456',
+                        r = requests.get(f'{url}/?token={GATEWAY_TOKEN}',
                             verify='/app/ca-fullchain.pem', timeout=5)
                         if r.status_code == 200:
                             gw_ok = True
@@ -863,7 +913,7 @@ class OpenClawTestCLI:
                                 'msg': f'HTTP 200 (TLS verified), attempt {i+1}'})
                             break
                     except requests.exceptions.SSLError:
-                        r2 = requests.get(f'{url}/?token=clawdbot-mode-123456', verify=False, timeout=5)
+                        r2 = requests.get(f'{url}/?token={GATEWAY_TOKEN}', verify=False, timeout=5)
                         if r2.status_code == 200:
                             gw_ok = True
                             results.append({'test': 'gateway', 'pass': True,
@@ -877,10 +927,8 @@ class OpenClawTestCLI:
             except Exception as e:
                 results.append({'test': 'gateway', 'pass': False, 'msg': str(e)[:200]})
 
-            # 5. Kill (跳过 — 私有部署场景下 SDK kill() 的 endpoint 不兼容)
-            # sandbox.kill() 在私有部署中会尝试解析公网 E2B 域名导致 DNS 失败
-            # Sandbox 生命周期由 sandbox-manager 自动管理，无需客户端主动 kill
-            print('[5/5] Skipping sandbox kill (managed by sandbox-manager)...')
+            # 6. Kill (跳过 — 私有部署场景下 SDK kill() 的 endpoint 不兼容)
+            print('[6/6] Skipping sandbox kill (managed by sandbox-manager)...')
             results.append({'test': 'sandbox_kill', 'pass': True, 'msg': 'Skipped (managed by sandbox-manager)'})
 
             print(json.dumps(results))
@@ -937,6 +985,7 @@ class OpenClawTestCLI:
         test_names = {
             "sandbox_create": "Sandbox 创建",
             "file_io": "文件读写",
+            "config_write": "配置写入 (openclaw.json)",
             "gateway": "Gateway 18789 端口",
             "sandbox_kill": "Sandbox 销毁",
         }

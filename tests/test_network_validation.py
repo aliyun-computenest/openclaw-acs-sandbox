@@ -971,7 +971,22 @@ class NetworkValidator:
                                 severity="P0")
 
         ns = self.sandbox_namespace
+
+        # Auto-detect container name: ACK template uses "gateway", ACS uses "openclaw"
         container = "openclaw"
+        rc, containers_json, _ = self.kubectl(
+            f"get pod {pod_name} -n {ns} -o jsonpath='{{.spec.containers[*].name}}'",
+            timeout=10
+        )
+        if rc == 0:
+            container_names = containers_json.strip("'").split()
+            if "gateway" in container_names:
+                container = "gateway"
+            elif "openclaw" in container_names:
+                container = "openclaw"
+            elif container_names:
+                container = container_names[0]
+            print(f"  [容器名探测] 可用容器: {container_names}, 使用: {container}")
 
         def _curl_http_code(url: str, timeout_s: int = 3) -> Tuple[int, str]:
             """Run curl from sandbox pod and return (rc, http_code)"""
@@ -1218,7 +1233,21 @@ class NetworkValidator:
                         True, f"Pod A={pod_a}, Pod B={pod_b} ({ip_b})")
 
         ns = self.sandbox_namespace
+
+        # Auto-detect container name for isolation test
         container = "openclaw"
+        rc_c, containers_out, _ = self.kubectl(
+            f"get pod {pod_a} -n {ns} -o jsonpath='{{.spec.containers[*].name}}'",
+            timeout=10
+        )
+        if rc_c == 0:
+            cnames = containers_out.strip("'").split()
+            if "gateway" in cnames:
+                container = "gateway"
+            elif "openclaw" in cnames:
+                container = "openclaw"
+            elif cnames:
+                container = cnames[0]
 
         def _curl(url: str, timeout_s: int = 3) -> str:
             rc, out, _ = self.run_cmd(
@@ -1364,8 +1393,24 @@ class NetworkValidator:
 
         domain = self.stack_params.get("E2BDomainAddress", "agent-vpc.infra")
 
+        # Auto-detect container name for DNS test
+        dns_container = "openclaw"
+        rc_c, containers_out, _ = self.kubectl(
+            f"get pod {pod_name} -n {self.sandbox_namespace} "
+            "-o jsonpath='{.spec.containers[*].name}'",
+            timeout=10
+        )
+        if rc_c == 0:
+            cnames = containers_out.strip("'").split()
+            if "gateway" in cnames:
+                dns_container = "gateway"
+            elif "openclaw" in cnames:
+                dns_container = "openclaw"
+            elif cnames:
+                dns_container = cnames[0]
+
         rc, out, _ = self.run_cmd(
-            f'kubectl exec {pod_name} -n {self.sandbox_namespace} -c openclaw -- '
+            f'kubectl exec {pod_name} -n {self.sandbox_namespace} -c {dns_container} -- '
             f'bash -c "getent hosts test.{domain} 2>&1 || echo LOOKUP_FAILED"',
             timeout=10
         )
@@ -1376,7 +1421,7 @@ class NetworkValidator:
                         else f"无法解析: {out[:200]}")
 
         rc, out, _ = self.kubectl(
-            f"exec {pod_name} -n {self.sandbox_namespace} -c openclaw -- cat /etc/resolv.conf",
+            f"exec {pod_name} -n {self.sandbox_namespace} -c {dns_container} -- cat /etc/resolv.conf",
             timeout=10
         )
         if rc == 0:

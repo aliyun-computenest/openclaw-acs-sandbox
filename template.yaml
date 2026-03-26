@@ -7,10 +7,44 @@ Conditions:
     Fn::Equals:
       - NewVPC
       - Ref: VpcOption
-  CreatePrivateZoneCondition:
+  UseExistingVpcCondition:
     Fn::Equals:
-      - true
-      - Ref: EnablePrivateZone
+      - ExistingVPC
+      - Ref: VpcOption
+  # PrivateZone 启用条件（NewVPC 场景：始终创建新 Zone）
+  EnablePrivateZoneForNewVpcCondition:
+    Fn::And:
+      - Fn::Equals:
+          - true
+          - Ref: EnablePrivateZone
+      - Fn::Equals:
+          - NewVPC
+          - Ref: VpcOption
+  # PrivateZone 启用条件（ExistingVPC + 无同名 Zone：需要创建新 Zone + 绑定 VPC + CNAME）
+  ExistingVpcNeedNewZoneCondition:
+    Fn::And:
+      - Fn::Equals:
+          - true
+          - Ref: EnablePrivateZone
+      - Fn::Equals:
+          - ExistingVPC
+          - Ref: VpcOption
+      - Fn::Equals:
+          - true
+          - Ref: NeedNewZoneForExistingVpc
+  # PrivateZone 启用条件（ExistingVPC + 已有同名 Zone：复用已有 ZoneId，只添加 CNAME）
+  ExistingVpcReuseZoneCondition:
+    Fn::And:
+      - Fn::Equals:
+          - true
+          - Ref: EnablePrivateZone
+      - Fn::Equals:
+          - ExistingVPC
+          - Ref: VpcOption
+      - Fn::Not:
+          Fn::Equals:
+            - true
+            - Ref: NeedNewZoneForExistingVpc
   EnablePublicIpConditions:
     Fn::Equals:
       - true
@@ -19,10 +53,53 @@ Conditions:
     Fn::Equals:
       - true
       - Ref: EnableCustomAlbVSwitch
-  EnableCmsObservabilityCondition:
-    Fn::Equals:
-      - true
-      - Ref: EnableCmsObservability
+Locals:
+  # ========== ExistingVPC 场景：查询已绑定该 VPC 的 PrivateZone，判断是否需要创建新 Zone ==========
+  # Step 1: 查询已绑定指定 VPC 的 PrivateZone（DATASOURCE 类型 Locals）
+  # 通过 VpcId 过滤，只返回已绑定该 VPC 的 Zone
+  # NewVPC 场景下 VpcId 为空，ROS 不会执行此数据源查询
+  # 复用路径下查到的 Zone 一定已绑定该 VPC，无需再执行 ZoneVpcBinder
+  ExistingVpcZonesLocal:
+    Type: DATASOURCE::PVTZ::Zones
+    Properties:
+      RefreshOptions: Always
+      VpcId:
+        Ref: VpcId
+  # Step 2: 计算同名 Zone 的数量（空数组安全：. // [] 防止 null 输入）
+  # 返回匹配域名的 Zone 数量（0 = 无同名 Zone，>0 = 有同名 Zone）
+  ExistingZoneCount:
+    Type: Eval
+    Value:
+      Fn::Jq:
+        - First
+        - Fn::Sub:
+            - '(. // []) | [.[] | select(.ZoneName == "${Domain}")] | length'
+            - Domain:
+                Ref: E2BDomainAddress
+        - Fn::GetAtt:
+            - ExistingVpcZonesLocal
+            - Zones
+  # Step 3: 计算是否需要创建新 Zone（布尔值，供 Conditions 引用）
+  # true = 无同名 Zone 需要新建，false = 有同名 Zone 可以复用
+  NeedNewZoneForExistingVpc:
+    Type: Eval
+    Value:
+      Fn::Equals:
+        - Ref: ExistingZoneCount
+        - 0
+  # Step 4: 提取已有同名 Zone 的 ZoneId（无匹配时为空字符串 ""）
+  ExistingPrivateZoneId:
+    Type: Eval
+    Value:
+      Fn::Jq:
+        - First
+        - Fn::Sub:
+            - '(. // []) | [.[] | select(.ZoneName == "${Domain}")] | if length > 0 then .[0].ZoneId else "" end'
+            - Domain:
+                Ref: E2BDomainAddress
+        - Fn::GetAtt:
+            - ExistingVpcZonesLocal
+            - Zones
 Parameters:
   # ==================== 前置确认 ====================
   WhitelistConfirmation:
@@ -447,11 +524,11 @@ Parameters:
         Condition:
           Fn::And:
             - Fn::Equals:
-              - ${AutoScalingOption}
-              - false
+                - ${AutoScalingOption}
+                - false
             - Fn::Equals:
-              - NewAck
-              - ${ClusterOption}
+                - NewAck
+                - ${ClusterOption}
   WorkerInstanceMinCount:
     Default: 3
     Type: Number
@@ -465,11 +542,11 @@ Parameters:
         Condition:
           Fn::And:
             - Fn::Equals:
-              - ${AutoScalingOption}
-              - true
+                - ${AutoScalingOption}
+                - true
             - Fn::Equals:
-              - NewAck
-              - ${ClusterOption}
+                - NewAck
+                - ${ClusterOption}
   WorkerInstanceMaxCount:
     Default: 10
     Type: Number
@@ -486,11 +563,11 @@ Parameters:
         Condition:
           Fn::And:
             - Fn::Equals:
-              - ${AutoScalingOption}
-              - true
+                - ${AutoScalingOption}
+                - true
             - Fn::Equals:
-              - NewAck
-              - ${ClusterOption}
+                - NewAck
+                - ${ClusterOption}
   AutoScalingOption:
     Type: Boolean
     Label:
@@ -599,31 +676,6 @@ Parameters:
       zh-cn: 为 sandbox-manager 分配的内存大小
       en: Memory allocated for sandbox-manager
     Default: 4Gi
-  BaiLianApiKey:
-    Type: String
-    Description:
-      zh-cn: 开通百炼模型服务，并获得 API-KEY。请参考： <a href="https://developer.aliyun.com/article/1655158"  target="_blank">获取百炼API-KEY</a>。
-      en: 'Activate BaiLian and obtain the API-KEY. Please refer to:  <a href="https://developer.aliyun.com/article/1655158"  target="_blank">Get BaiLian API-KEY</a>.'
-    Label:
-      zh-cn: 百炼 API-KEY
-      en: BaiLian API-KEY
-    Default: sk-xxx
-  OpenClawGatewayToken:
-    Type: String
-    Label:
-      en: OpenClaw Gateway Token
-      zh-cn: OpenClaw 访问Token
-    Description:
-      zh-cn: 配置OpenClaw的访问Token，用于访问OpenClaw服务
-      en: Configure OpenClaw access token for accessing OpenClaw service
-    AssociationProperty: AutoCompleteInput
-    AssociationPropertyMetadata:
-      Length: 8
-      Prefix: openclaw-
-      CharacterClasses:
-        - Class: lowercase
-          min: 1
-    Default: null
   OpenClawReplicas:
     Type: Number
     Label:
@@ -657,7 +709,7 @@ Parameters:
                 - cn-hongkong
                 - ap-northeast-1
               - ${RegionId}
-          Value: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2
+          Value: registry-${RegionId}.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
         # 其他地域 - 使用杭州公网镜像仓库
         - Condition:
             Fn::Not:
@@ -670,7 +722,7 @@ Parameters:
                   - cn-hongkong
                   - ap-northeast-1
                 - ${RegionId}
-          Value: registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2
+          Value: registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
   EnablePublicIp:
     Type: Boolean
     Description:
@@ -680,99 +732,7 @@ Parameters:
       en: Whether to enable the public ip.
       zh-cn: 是否支持公网访问
     Default: false
-  EnablePrivateZone:
-    Type: Boolean
-    Description:
-      zh-cn: 若需要内网访问，需要通过PrivateZone配置内网域名解析,打开此配置，会自动创建privateZone, 并设置内网权威域名的生效范围为所选的VPC.
-    Label:
-      zh-cn: 是否配置内网域名解析
-      en: Weather to enable the configuration for internal network domain name resolution
-    Default: true
-  # ==================== CMS 可观测性配置 ====================
-  EnableCmsObservability:
-    Type: Boolean
-    Label:
-      en: Enable CMS Observability
-      zh-cn: 启用云监控可观测性
-    Description:
-      zh-cn: 启用后将通过无侵入方式接入阿里云云监控2.0（ARMS），自动采集 OpenClaw 的 Trace、Metrics 等可观测数据。需要提前在云监控2.0控制台创建工作空间。
-      en: When enabled, OpenClaw will be instrumented with Alibaba Cloud CMS 2.0 (ARMS) for automatic trace and metrics collection. Requires a pre-created CMS 2.0 workspace.
-    Default: false
-  CmsArmsLicenseKey:
-    Type: String
-    Label:
-      en: ARMS License Key
-      zh-cn: ARMS 鉴权 License Key
-    Description:
-      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 authToken 字段。可在云监控2.0控制台的接入中心获取。
-      en: Obtained from CMS 2.0 GetServiceObservability API, the authToken field in entryPointInfo.
-    Default: ''
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - true
-            - ${EnableCmsObservability}
-  CmsArmsProject:
-    Type: String
-    Label:
-      en: ARMS Project
-      zh-cn: ARMS 项目名
-    Description:
-      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 project 字段。
-      en: Obtained from CMS 2.0 GetServiceObservability API, the project field in entryPointInfo.
-    Default: ''
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - true
-            - ${EnableCmsObservability}
-  CmsWorkspaceName:
-    Type: String
-    Label:
-      en: CMS Workspace Name
-      zh-cn: 云监控工作空间名称
-    Description:
-      zh-cn: 云监控2.0工作空间名称。如不填写，将使用默认工作空间 default-cms-${主账号UID}-${RegionId}。可在云监控2.0控制台查看。
-      en: CMS 2.0 workspace name. If empty, defaults to default-cms-${AccountUID}-${RegionId}.
-    Default: ''
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - true
-            - ${EnableCmsObservability}
-  CmsServiceName:
-    Type: String
-    Label:
-      en: CMS Service Name
-      zh-cn: 应用监控服务名
-    Description:
-      zh-cn: 上报到云监控2.0应用监控的服务名称，用户可自定义。
-      en: Service name reported to CMS 2.0 application monitoring, user-defined.
-    Default: openclaw
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - true
-            - ${EnableCmsObservability}
-  CmsEndpoint:
-    Type: String
-    Label:
-      en: CMS Endpoint
-      zh-cn: CMS 上报端点
-    Description:
-      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 publicDomain 或 privateDomain 字段。
-      en: Obtained from CMS 2.0 GetServiceObservability API, the publicDomain or privateDomain field in entryPointInfo.
-    Default: ''
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - true
-            - ${EnableCmsObservability}
+
 Resources:
   VpcModule:
     Type: MODULE::ACS::ComputeNest::VpcAndVSwitch
@@ -966,7 +926,7 @@ Resources:
       InstalledIgnore: true
       Addons:
         - Name: ack-sandbox-manager
-          Version: 'v0.4.2'
+          Version: 'v0.4.3'
           Config:
             Fn::Sub:
               - '{"sandboxManager":{"replicaCount":3,"acs":false,"e2b":{"domain":"${E2BDomainAddress}","enableAuth":true,"adminApiKey":"${AdminApiKey}","maxTimeout":2592000},"ingress":{"className":"alb"},"controller":{"resources":{"cpu":"${SandboxManagerCpu}","memory":"${SandboxManagerMemory}"},"logLevel":5,"enableSLS":true,"maxClaimWorkers":100,"maxCreateQPS":200,"createPodInsteadOfSandbox":false,"extProcMaxConcurrency":3000}}}'
@@ -1045,10 +1005,6 @@ Resources:
             metadata:
               name: openclaw
               namespace: default
-              annotations:
-                e2b.agents.kruise.io/should-init-envd: "true"
-              labels:
-                app: openclaw
             spec:
               persistentContents:
                 - filesystem
@@ -1061,13 +1017,26 @@ Resources:
                   annotations:
                     ops.alibabacloud.com/pause-enabled: "true"
                 spec:
-                  restartPolicy: Always
                   automountServiceAccountToken: false
                   enableServiceLinks: false
+                  hostNetwork: false
+                  hostPID: false
+                  hostIPC: false
+                  shareProcessNamespace: false
+                  hostname: openclaw
                   initContainers:
+                    - name: tini-copy
+                      image: kube-ai-registry.cn-shanghai.cr.aliyuncs.com/kube-ai/ubuntu-tini:krallin-ubuntu-tini-latest
+                      command: ["sh", "-c"]
+                      args:
+                        - |
+                          cp /usr/bin/tini /mnt/tini/tini
+                          chmod +x /mnt/tini/tini
+                      volumeMounts:
+                        - name: tini-volume
+                          mountPath: /mnt/tini
                     - name: init
                       image: "${InitImage}"
-                      imagePullPolicy: IfNotPresent
                       command: [ "sh", "/workspace/entrypoint_inner.sh" ]
                       volumeMounts:
                         - name: envd-volume
@@ -1079,19 +1048,51 @@ Resources:
                           value: "true"
                       restartPolicy: Always
                   containers:
-                    - name: openclaw
+                    - name: gateway
                       image: "${OpenClawImage}"
-                      imagePullPolicy: IfNotPresent
-                      command:
-                        - /bin/sh
-                        - -c
-                        - |
-                          ${CmsInstallCommand}
-                          exec /usr/local/bin/docker-entrypoint.sh
                       securityContext:
                         readOnlyRootFilesystem: false
-                        runAsGroup: 0
                         runAsUser: 0
+                        runAsGroup: 0
+                      command: ["/mnt/tini/tini", "--"]
+                      args:
+                        - bash
+                        - -c
+                        - |
+                          exec node openclaw.mjs gateway run --allow-unconfigured
+                      ports:
+                        - name: gateway
+                          containerPort: 18789
+                          protocol: TCP
+                        - name: runtime
+                          containerPort: 49983
+                          protocol: TCP
+                      env:
+                        - name: ENVD_DIR
+                          value: /mnt/envd
+                        - name: OPENCLAW_CONFIG_DIR
+                          value: /root/.openclaw
+                        - name: KUBERNETES_SERVICE_PORT_HTTPS
+                          value: ""
+                        - name: KUBERNETES_SERVICE_PORT
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP_PROTO
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP_ADDR
+                          value: ""
+                        - name: KUBERNETES_SERVICE_HOST
+                          value: ""
+                        - name: KUBERNETES_PORT
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP_PORT
+                          value: ""
+                      volumeMounts:
+                        - name: envd-volume
+                          mountPath: /mnt/envd
+                        - name: tini-volume
+                          mountPath: /mnt/tini
                       resources:
                         requests:
                           cpu: 2
@@ -1099,33 +1100,45 @@ Resources:
                         limits:
                           cpu: 2
                           memory: 4Gi
-                      env:
-                        - name: ENVD_DIR
-                          value: /mnt/envd
-                        - name: DASHSCOPE_API_KEY
-                          value: "${BaiLianApiKey}"
-                        - name: GATEWAY_TOKEN
-                          value: "${OpenClawGatewayToken}"
-                      volumeMounts:
-                        - name: envd-volume
-                          mountPath: /mnt/envd
-                      startupProbe:
-                        tcpSocket:
-                          port: 18789
-                        initialDelaySeconds: 5
-                        periodSeconds: 5
-                        failureThreshold: 30
                       lifecycle:
                         postStart:
                           exec:
                             command:
-                            - /bin/bash
-                            - -c
-                            - /mnt/envd/envd-run.sh
-                  terminationGracePeriodSeconds: 30
+                              - bash
+                              - /mnt/envd/envd-run.sh
+                      startupProbe:
+                        exec:
+                          command:
+                            - node
+                            - -e
+                            - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+                        initialDelaySeconds: 60
+                        periodSeconds: 30
+                        failureThreshold: 30
+                      # livenessProbe:
+                      #   exec:
+                      #     command:
+                      #       - node
+                      #       - -e
+                      #       - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+                      #   initialDelaySeconds: 60
+                      #   periodSeconds: 30
+                      #   timeoutSeconds: 10
+                      # readinessProbe:
+                      #   exec:
+                      #     command:
+                      #       - node
+                      #       - -e
+                      #       - "require('http').get('http://127.0.0.1:18789/readyz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+                      #   initialDelaySeconds: 15
+                      #   periodSeconds: 10
+                      #   timeoutSeconds: 5
+                  terminationGracePeriodSeconds: 1
                   volumes:
-                  - emptyDir: {}
-                    name: envd-volume
+                    - name: envd-volume
+                      emptyDir: { }
+                    - name: tini-volume
+                      emptyDir: { }
           - OpenClawReplicas:
               Ref: OpenClawReplicas
             OpenClawImage:
@@ -1135,26 +1148,7 @@ Resources:
                 - registry-${RegionId}.ack.aliyuncs.com/acs/agent-runtime:v0.0.2
                 - RegionId:
                     Ref: ALIYUN::Region
-            BaiLianApiKey:
-              Ref: BaiLianApiKey
-            OpenClawGatewayToken:
-              Ref: OpenClawGatewayToken
-            CmsInstallCommand:
-              Fn::If:
-                - EnableCmsObservabilityCondition
-                - Fn::Sub:
-                    - 'wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget.sh | bash -s -- --x-arms-license-key "${LicenseKey}" --x-arms-project "${ArmsProject}" --x-cms-workspace "${WorkspaceName}" --serviceName "${ServiceName}" --endpoint "${Endpoint}"'
-                    - LicenseKey:
-                        Ref: CmsArmsLicenseKey
-                      ArmsProject:
-                        Ref: CmsArmsProject
-                      WorkspaceName:
-                        Ref: CmsWorkspaceName
-                      ServiceName:
-                        Ref: CmsServiceName
-                      Endpoint:
-                        Ref: CmsEndpoint
-                - 'echo "CMS observability disabled, skipping ARMS injection"'
+
       WaitUntil:
         # 等待 SandboxSet 至少有一个可用副本
         # 超时 300 秒（5分钟）- 如果超时请检查：
@@ -1293,7 +1287,7 @@ Resources:
             spec:
               containers:
                 - name: acs-sandbox-test-pod
-                  image: compute-nest-registry.cn-hangzhou.cr.aliyuncs.com/computenest/acs-sandbox-test-pod:1.0.0
+                  image: compute-nest-registry.cn-hangzhou.cr.aliyuncs.com/computenest/acs-sandbox-test-pod:2.0.0
                   imagePullPolicy: Always
                   env:
                     - name: E2B_API_KEY
@@ -1310,9 +1304,9 @@ Resources:
             TLSCert:
               Ref: TLSCert
 
-  # ========== PrivateZone（Sandbox 就绪后配置内网域名解析 + CNAME） ==========
+  # ========== PrivateZone — NewVPC 场景：创建全新 Zone ==========
   PrivateZone:
-    Condition: CreatePrivateZoneCondition
+    Condition: EnablePrivateZoneForNewVpcCondition
     Type: ALIYUN::PVTZ::Zone
     DependsOn: OpenClawSandboxSet
     Properties:
@@ -1320,7 +1314,7 @@ Resources:
       ZoneName:
         Ref: E2BDomainAddress
   PrivateZoneVpcBinder:
-    Condition: CreatePrivateZoneCondition
+    Condition: EnablePrivateZoneForNewVpcCondition
     Type: ALIYUN::PVTZ::ZoneVpcBinder
     Properties:
       Vpcs:
@@ -1335,7 +1329,7 @@ Resources:
           - PrivateZone
           - ZoneId
   PrivateZoneCnameRecord:
-    Condition: CreatePrivateZoneCondition
+    Condition: EnablePrivateZoneForNewVpcCondition
     Type: ALIYUN::PVTZ::ZoneRecord
     DependsOn:
       - PrivateZoneVpcBinder
@@ -1345,6 +1339,70 @@ Resources:
         Fn::GetAtt:
           - PrivateZone
           - ZoneId
+      Rr: "*"
+      Type: CNAME
+      Value:
+        Fn::Jq:
+          - First
+          - '.[0].DNSName'
+          - Fn::GetAtt:
+              - AlbDataSource
+              - LoadBalancers
+
+  # ========== PrivateZone — ExistingVPC + 无同名 Zone：创建新 Zone + 绑定 VPC + CNAME ==========
+  PrivateZoneForExistingVpc:
+    Condition: ExistingVpcNeedNewZoneCondition
+    Type: ALIYUN::PVTZ::Zone
+    Properties:
+      ProxyPattern: ZONE
+      ZoneName:
+        Ref: E2BDomainAddress
+  PrivateZoneVpcBinderForExistingVpc:
+    Condition: ExistingVpcNeedNewZoneCondition
+    Type: ALIYUN::PVTZ::ZoneVpcBinder
+    Properties:
+      Vpcs:
+        - RegionId:
+            Ref: ALIYUN::Region
+          VpcId:
+            Ref: VpcId
+      ZoneId:
+        Fn::GetAtt:
+          - PrivateZoneForExistingVpc
+          - ZoneId
+  ExistingVpcNewZoneCnameRecord:
+    Condition: ExistingVpcNeedNewZoneCondition
+    Type: ALIYUN::PVTZ::ZoneRecord
+    DependsOn:
+      - PrivateZoneVpcBinderForExistingVpc
+      - AlbDataSource
+    Properties:
+      ZoneId:
+        Fn::GetAtt:
+          - PrivateZoneForExistingVpc
+          - ZoneId
+      Rr: "*"
+      Type: CNAME
+      Value:
+        Fn::Jq:
+          - First
+          - '.[0].DNSName'
+          - Fn::GetAtt:
+              - AlbDataSource
+              - LoadBalancers
+
+  # ========== PrivateZone — ExistingVPC + 已有同名 Zone：复用已有 ZoneId ==========
+  # ZoneId 来自 Locals 中的 ExistingPrivateZoneId
+  # 因为 ExistingVpcZonesLocal 已通过 VpcId 过滤，查到的 Zone 一定已绑定该 VPC
+  # 所以无需再执行 ZoneVpcBinder，直接添加 CNAME 记录即可
+  ExistingVpcReuseZoneCnameRecord:
+    Condition: ExistingVpcReuseZoneCondition
+    Type: ALIYUN::PVTZ::ZoneRecord
+    DependsOn:
+      - AlbDataSource
+    Properties:
+      ZoneId:
+        Ref: ExistingPrivateZoneId
       Rr: "*"
       Type: CNAME
       Value:
@@ -1502,8 +1560,8 @@ Outputs:
   E2B_API_KEY:
     Label: Sandbox API 访问密钥
     Value:
-      Ref: AdminApiKey 
-    NoEcho: true  
+      Ref: AdminApiKey
+    NoEcho: true
   E2B_DOMAIN:
     Label: Sandbox 访问域名
     Value:
@@ -1564,19 +1622,4 @@ Metadata:
         Label:
           en: Sandbox Configuration
           zh-cn: Sandbox 配置
-      - Parameters:
-          - BaiLianApiKey
-          - OpenClawGatewayToken
-        Label:
-          en: OpenClaw Configuration
-          zh-cn: OpenClaw 默认配置
-      - Parameters:
-          - EnableCmsObservability
-          - CmsArmsLicenseKey
-          - CmsArmsProject
-          - CmsWorkspaceName
-          - CmsServiceName
-          - CmsEndpoint
-        Label:
-          en: CMS Observability
-          zh-cn: 云监控可观测性配置
+

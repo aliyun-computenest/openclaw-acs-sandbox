@@ -11,7 +11,6 @@ Conditions:
     Fn::Equals:
       - ExistingVPC
       - Ref: VpcOption
-  # PrivateZone 启用条件（NewVPC 场景：始终创建新 Zone）
   EnablePrivateZoneForNewVpcCondition:
     Fn::And:
       - Fn::Equals:
@@ -20,7 +19,6 @@ Conditions:
       - Fn::Equals:
           - NewVPC
           - Ref: VpcOption
-  # PrivateZone 启用条件（ExistingVPC + 无同名 Zone：需要创建新 Zone + 绑定 VPC + CNAME）
   ExistingVpcNeedNewZoneCondition:
     Fn::And:
       - Fn::Equals:
@@ -32,7 +30,6 @@ Conditions:
       - Fn::Equals:
           - true
           - Ref: NeedNewZoneForExistingVpc
-  # PrivateZone 启用条件（ExistingVPC + 已有同名 Zone：复用已有 ZoneId，只添加 CNAME）
   ExistingVpcReuseZoneCondition:
     Fn::And:
       - Fn::Equals:
@@ -57,8 +54,6 @@ Conditions:
       - Fn::Equals:
           - ExistingVPC
           - Ref: VpcOption
-  # OpenClaw VSwitch3 与 VSwitch2 不同时，才需要创建第3个路由表关联和SNAT规则
-  # NewVPC 场景下一定不同（自动创建3个不同VSwitch）；ExistingVPC 场景下需要判断用户选择
   OpenClawVSwitch3NeedsRouteTable:
     Fn::Or:
       - Fn::Equals:
@@ -68,65 +63,50 @@ Conditions:
           Fn::Equals:
             - Ref: OpenClawVSwitchId2
             - Ref: OpenClawVSwitchId3
-  EnableCmsObservabilityCondition:
-    Fn::Equals:
-      - true
-      - Ref: EnableCmsObservability
 Locals:
-  # ========== ExistingVPC 场景：查询已绑定该 VPC 的 PrivateZone，判断是否需要创建新 Zone ==========
-  # Step 1: 查询已绑定指定 VPC 的 PrivateZone（DATASOURCE 类型 Locals）
-  # 通过 VpcId 过滤，只返回已绑定该 VPC 的 Zone
-  # NewVPC 场景下 VpcId 为空，ROS 不会执行此数据源查询
-  # 复用路径下查到的 Zone 一定已绑定该 VPC，无需再执行 ZoneVpcBinder
   ExistingVpcZonesLocal:
     Type: DATASOURCE::PVTZ::Zones
     Properties:
       RefreshOptions: Always
       VpcId:
         Ref: VpcId
-  # Step 2: 计算同名 Zone 的数量（空数组安全：. // [] 防止 null 输入）
-  # 返回匹配域名的 Zone 数量（0 = 无同名 Zone，>0 = 有同名 Zone）
   ExistingZoneCount:
     Type: Eval
     Value:
       Fn::Jq:
         - First
         - Fn::Sub:
-            - '(. // []) | [.[] | select(.ZoneName == "${Domain}")] | length'
+            - (. // []) | [.[] | select(.ZoneName == "${Domain}")] | length
             - Domain:
                 Ref: E2BDomainAddress
         - Fn::GetAtt:
             - ExistingVpcZonesLocal
             - Zones
-  # Step 3: 计算是否需要创建新 Zone（布尔值，供 Conditions 引用）
-  # true = 无同名 Zone 需要新建，false = 有同名 Zone 可以复用
   NeedNewZoneForExistingVpc:
     Type: Eval
     Value:
       Fn::Equals:
         - Ref: ExistingZoneCount
         - 0
-  # Step 4: 提取已有同名 Zone 的 ZoneId（无匹配时为空字符串 ""）
   ExistingPrivateZoneId:
     Type: Eval
     Value:
       Fn::Jq:
         - First
         - Fn::Sub:
-            - '(. // []) | [.[] | select(.ZoneName == "${Domain}")] | if length > 0 then .[0].ZoneId else "" end'
+            - (. // []) | [.[] | select(.ZoneName == "${Domain}")] | if length > 0 then .[0].ZoneId else "" end
             - Domain:
                 Ref: E2BDomainAddress
         - Fn::GetAtt:
             - ExistingVpcZonesLocal
             - Zones
 Parameters:
-  # ==================== 前置确认 ====================
   WhitelistConfirmation:
-    Type: "String"
+    Type: String
     Label:
-      en: "Whitelist Confirmation"
-      zh-cn: "白名单配置确认"
-    AssociationProperty: "AlertCheckbox"
+      en: Whitelist Confirmation
+      zh-cn: 白名单配置确认
+    AssociationProperty: AlertCheckbox
     Default: false
     AssociationPropertyMetadata:
       Description:
@@ -144,17 +124,15 @@ Parameters:
           <br/>
           2. Submit a ticket to add to whitelist: <a href="https://smartservice.console.aliyun.com/service/create-ticket" target="_blank">Submit a ticket</a>
       ConfirmText:
-        zh-cn: "我已确认完成白名单配置"
-        en: "I have confirmed the whitelist configuration"
+        zh-cn: 我已确认完成白名单配置
+        en: I have confirmed the whitelist configuration
       Alert: true
-      Type: "warning"
+      Type: warning
       MustChecked: true
-
-  # ==================== 可用区配置（3 可用区） ====================
   ZoneId1:
     Type: String
     AssociationProperty: ALIYUN::ECS::Instance:ZoneId
-    Default: null
+    Default: Null
     Required: true
     AllowedValues:
       - cn-hangzhou-b
@@ -200,7 +178,7 @@ Parameters:
   ZoneId2:
     Type: String
     AssociationProperty: ALIYUN::ECS::Instance:ZoneId
-    Default: null
+    Default: Null
     Required: true
     AllowedValues:
       - cn-hangzhou-b
@@ -245,7 +223,7 @@ Parameters:
   ZoneId3:
     Type: String
     AssociationProperty: ALIYUN::ECS::Instance:ZoneId
-    Default: null
+    Default: Null
     Required: true
     AllowedValues:
       - cn-hangzhou-b
@@ -287,8 +265,6 @@ Parameters:
     Label:
       en: Zone ID 3
       zh-cn: 可用区3
-
-  # ==================== VPC 配置 ====================
   VpcOption:
     Type: String
     AllowedValues:
@@ -331,10 +307,10 @@ Parameters:
       en: Please search the ID starting with (vpc-xxx) from console-Virtual Private Cloud
       zh-cn: 现有虚拟专有网络的实例ID
     Required: true
-    Default: null
-    AssociationProperty: 'ALIYUN::ECS::VPC::VPCId'
+    Default: Null
+    AssociationProperty: ALIYUN::ECS::VPC::VPCId
     AssociationPropertyMetadata:
-      RegionId: '${RegionId}'
+      RegionId: ${RegionId}
       Visible:
         Condition:
           Fn::Equals:
@@ -357,8 +333,6 @@ Parameters:
           Fn::Equals:
             - NewVPC
             - ${VpcOption}
-
-  # ==================== 业务 VSW（3 个，已有 VPC 场景） ====================
   VSwitchId1:
     Type: String
     Label:
@@ -368,11 +342,11 @@ Parameters:
       zh-cn: 业务网络交换机（可用区1），用于集群节点和普通业务 Pod。不能与 OpenClaw 专用交换机及其他业务交换机相同
       en: Business VSwitch in Zone 1, for cluster nodes and general business Pods. Must differ from OpenClaw VSwitches and other business VSwitches
     Required: true
-    Default: null
-    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    Default: Null
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
     AssociationPropertyMetadata:
-      VpcId: '${VpcId}'
-      ZoneId: '${ZoneId1}'
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId1}
       ExclusiveTo:
         - VSwitchId2
         - VSwitchId3
@@ -393,11 +367,11 @@ Parameters:
       zh-cn: 业务网络交换机（可用区2），用于集群节点和普通业务 Pod。不能与 OpenClaw 专用交换机及其他业务交换机相同
       en: Business VSwitch in Zone 2, for cluster nodes and general business Pods. Must differ from OpenClaw VSwitches and other business VSwitches
     Required: true
-    Default: null
-    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    Default: Null
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
     AssociationPropertyMetadata:
-      VpcId: '${VpcId}'
-      ZoneId: '${ZoneId2}'
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId2}
       ExclusiveTo:
         - VSwitchId1
         - VSwitchId3
@@ -418,11 +392,11 @@ Parameters:
       zh-cn: 业务网络交换机（可用区3），用于集群节点和普通业务 Pod。不能与 OpenClaw 专用交换机及其他业务交换机相同
       en: Business VSwitch in Zone 3, for cluster nodes and general business Pods. Must differ from OpenClaw VSwitches and other business VSwitches
     Required: true
-    Default: null
-    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    Default: Null
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
     AssociationPropertyMetadata:
-      VpcId: '${VpcId}'
-      ZoneId: '${ZoneId3}'
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId3}
       ExclusiveTo:
         - VSwitchId1
         - VSwitchId2
@@ -434,8 +408,6 @@ Parameters:
           Fn::Equals:
             - ExistingVPC
             - ${VpcOption}
-
-  # ==================== 业务 VSW 网段（新建 VPC 场景） ====================
   VSwitchCidrBlock1:
     Type: String
     Label:
@@ -490,8 +462,6 @@ Parameters:
           Fn::Equals:
             - NewVPC
             - ${VpcOption}
-
-  # ==================== OpenClaw 独立 VSW（3 个，已有 VPC 场景） ====================
   OpenClawVSwitchId1:
     Type: String
     Label:
@@ -501,11 +471,11 @@ Parameters:
       zh-cn: OpenClaw 隔离网段交换机（可用区1），独立安全组，用于 Sandbox Pod 网络隔离。不能与业务交换机及其他 OpenClaw 交换机相同
       en: OpenClaw isolated VSwitch in Zone 1, with dedicated SecurityGroup for Sandbox Pod isolation. Must differ from business and other OpenClaw VSwitches
     Required: true
-    Default: null
-    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    Default: Null
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
     AssociationPropertyMetadata:
-      VpcId: '${VpcId}'
-      ZoneId: '${ZoneId1}'
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId1}
       ExclusiveTo:
         - OpenClawVSwitchId2
         - OpenClawVSwitchId3
@@ -526,11 +496,11 @@ Parameters:
       zh-cn: OpenClaw 隔离网段交换机（可用区2），独立安全组，用于 Sandbox Pod 网络隔离。不能与业务交换机及其他 OpenClaw 交换机相同
       en: OpenClaw isolated VSwitch in Zone 2, with dedicated SecurityGroup for Sandbox Pod isolation. Must differ from business and other OpenClaw VSwitches
     Required: true
-    Default: null
-    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    Default: Null
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
     AssociationPropertyMetadata:
-      VpcId: '${VpcId}'
-      ZoneId: '${ZoneId2}'
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId2}
       ExclusiveTo:
         - OpenClawVSwitchId1
         - OpenClawVSwitchId3
@@ -551,11 +521,11 @@ Parameters:
       zh-cn: OpenClaw 隔离网段交换机（可用区3），独立安全组，用于 Sandbox Pod 网络隔离。不能与业务交换机及其他 OpenClaw 交换机相同
       en: OpenClaw isolated VSwitch in Zone 3, with dedicated SecurityGroup for Sandbox Pod isolation. Must differ from business and other OpenClaw VSwitches
     Required: true
-    Default: null
-    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    Default: Null
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
     AssociationPropertyMetadata:
-      VpcId: '${VpcId}'
-      ZoneId: '${ZoneId3}'
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId3}
       ExclusiveTo:
         - OpenClawVSwitchId1
         - OpenClawVSwitchId2
@@ -567,8 +537,6 @@ Parameters:
           Fn::Equals:
             - ExistingVPC
             - ${VpcOption}
-
-  # ==================== OpenClaw 附加 VPC 网段（新建 VPC 场景） ====================
   OpenClawSecondaryCidrBlock:
     Type: String
     Label:
@@ -585,8 +553,6 @@ Parameters:
           Fn::Equals:
             - NewVPC
             - ${VpcOption}
-
-  # ==================== OpenClaw 独立 VSW 网段（新建 VPC 场景） ====================
   OpenClawVSwitchCidrBlock1:
     Type: String
     Label:
@@ -638,13 +604,6 @@ Parameters:
           Fn::Equals:
             - NewVPC
             - ${VpcOption}
-
-  # ==================== 安全组精细化网段参数（动态获取） ====================
-  # DownstreamCidrBlock: 使用业务 VSwitch 网段（VSwitchCidrBlock1/2/3），集群创建时自动确定
-  # UpstreamCidrBlock: NAT 网关内网 IP，通过 DATASOURCE::VPC::NatGateways 动态获取
-  # ApiserverCidrBlock: API Server 内网 IP，通过 DATASOURCE::CS::KubernetesCluster 的 MasterUrl 动态获取
-
-  # ==================== ALB 专用 VSW（可选） ====================
   EnableCustomAlbVSwitch:
     Type: Boolean
     Label:
@@ -669,11 +628,11 @@ Parameters:
       en: Dedicated VSwitch for ALB in Zone 1.
       zh-cn: ALB 在可用区1使用的专用交换机，须属于同一VPC。
     Required: false
-    Default: null
-    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    Default: Null
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
     AssociationPropertyMetadata:
-      VpcId: '${VpcId}'
-      ZoneId: '${ZoneId1}'
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId1}
       Visible:
         Condition:
           Fn::And:
@@ -692,11 +651,11 @@ Parameters:
       en: Dedicated VSwitch for ALB in Zone 2.
       zh-cn: ALB 在可用区2使用的专用交换机，须属于同一VPC。
     Required: false
-    Default: null
-    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    Default: Null
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
     AssociationPropertyMetadata:
-      VpcId: '${VpcId}'
-      ZoneId: '${ZoneId2}'
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId2}
       Visible:
         Condition:
           Fn::And:
@@ -706,8 +665,6 @@ Parameters:
             - Fn::Equals:
                 - true
                 - ${EnableCustomAlbVSwitch}
-
-  # ==================== 集群网络配置 ====================
   ServiceCidr:
     Type: String
     Description:
@@ -726,8 +683,6 @@ Parameters:
       Addons:
         - name: terway
     Default: 172.16.0.0/16
-
-  # ==================== 集群节点配置（ACK 场景，ACS 隐藏） ====================
   InstanceType:
     Type: CommaDelimitedList
     Default:
@@ -748,7 +703,6 @@ Parameters:
           - ecs.r9i
           - ecs.c9a
           - ecs.c9ae
-
     Label:
       en: Worker Instance Type
       zh-cn: Worker 节点实例规格
@@ -812,11 +766,11 @@ Parameters:
         Condition:
           Fn::And:
             - Fn::Equals:
-              - ${AutoScalingOption}
-              - false
+                - ${AutoScalingOption}
+                - false
             - Fn::Equals:
-              - NewAck
-              - ${ClusterOption}
+                - NewAck
+                - ${ClusterOption}
   WorkerInstanceMinCount:
     Default: 3
     Type: Number
@@ -830,11 +784,11 @@ Parameters:
         Condition:
           Fn::And:
             - Fn::Equals:
-              - ${AutoScalingOption}
-              - true
+                - ${AutoScalingOption}
+                - true
             - Fn::Equals:
-              - NewAck
-              - ${ClusterOption}
+                - NewAck
+                - ${ClusterOption}
   WorkerInstanceMaxCount:
     Default: 10
     Type: Number
@@ -851,11 +805,11 @@ Parameters:
         Condition:
           Fn::And:
             - Fn::Equals:
-              - ${AutoScalingOption}
-              - true
+                - ${AutoScalingOption}
+                - true
             - Fn::Equals:
-              - NewAck
-              - ${ClusterOption}
+                - NewAck
+                - ${ClusterOption}
   AutoScalingOption:
     Type: Boolean
     Label:
@@ -886,8 +840,6 @@ Parameters:
           Fn::Equals:
             - NewAck
             - ${ClusterOption}
-
-  # ==================== Sandbox 配置 ====================
   E2BDomainAddress:
     Type: String
     Label:
@@ -907,7 +859,6 @@ Parameters:
       zh-cn: 若需要内网访问，需要通过PrivateZone配置内网域名解析。打开此配置会自动创建PrivateZone，并设置内网权威域名的生效范围为所选的VPC。
       en: If internal network access is required, configure internal domain name resolution through PrivateZone.
     Default: true
-
   TLSCert:
     Type: String
     Label:
@@ -946,7 +897,7 @@ Parameters:
           min: 10
         - Class: number
           min: 10
-    Default: null
+    Default: Null
   SandboxManagerCpu:
     Type: Number
     Label:
@@ -979,31 +930,6 @@ Parameters:
     AllowedValues:
       - 'true'
       - 'false'
-  BaiLianApiKey:
-    Type: String
-    Description:
-      zh-cn: 开通百炼模型服务，并获得 API-KEY。请参考： <a href="https://developer.aliyun.com/article/1655158" target="_blank">获取百炼API-KEY</a>。
-      en: 'Activate BaiLian and obtain the API-KEY. Please refer to: <a href="https://developer.aliyun.com/article/1655158" target="_blank">Get BaiLian API-KEY</a>.'
-    Label:
-      zh-cn: 百炼 API-KEY
-      en: BaiLian API-KEY
-    Default: sk-xxx
-  OpenClawGatewayToken:
-    Type: String
-    Label:
-      en: OpenClaw Gateway Token
-      zh-cn: OpenClaw 访问Token
-    Description:
-      zh-cn: 配置OpenClaw的访问Token，用于访问OpenClaw服务
-      en: Configure OpenClaw access token for accessing OpenClaw service
-    AssociationProperty: AutoCompleteInput
-    AssociationPropertyMetadata:
-      Length: 8
-      Prefix: openclaw-
-      CharacterClasses:
-        - Class: lowercase
-          min: 1
-    Default: null
   SandboxNamespace:
     Type: String
     Label:
@@ -1013,7 +939,7 @@ Parameters:
       zh-cn: SandboxSet（OpenClaw Pod）和 TestPod 所在的 Kubernetes 命名空间。sandbox-manager 固定部署在 sandbox-system，不受此参数影响
       en: Kubernetes namespace for SandboxSet (OpenClaw Pods) and TestPod. sandbox-manager is always deployed in sandbox-system
     Default: default
-    AllowedPattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+    AllowedPattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
     ConstraintDescription:
       zh-cn: 仅允许小写字母、数字和连字符，必须以字母或数字开头和结尾
       en: Only lowercase letters, digits and hyphens allowed, must start and end with a letter or digit
@@ -1049,7 +975,7 @@ Parameters:
                 - cn-hongkong
                 - ap-northeast-1
               - ${RegionId}
-          Value: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2
+          Value: registry-${RegionId}.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
         - Condition:
             Fn::Not:
               Fn::Contains:
@@ -1061,7 +987,7 @@ Parameters:
                   - cn-hongkong
                   - ap-northeast-1
                 - ${RegionId}
-          Value: registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2
+          Value: registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
   EnablePublicIp:
     Type: Boolean
     Description:
@@ -1071,94 +997,7 @@ Parameters:
       en: Whether to enable the public ip.
       zh-cn: 是否支持公网访问
     Default: false
-  # ==================== CMS 可观测性配置 ====================
-  EnableCmsObservability:
-    Type: Boolean
-    Label:
-      en: Enable CMS Observability
-      zh-cn: 启用云监控可观测性
-    Description:
-      zh-cn: 启用后将通过无侵入方式接入阿里云云监控2.0（ARMS），自动采集 OpenClaw 的 Trace、Metrics 等可观测数据。需要提前在云监控2.0控制台创建工作空间。
-      en: When enabled, OpenClaw will be instrumented with Alibaba Cloud CMS 2.0 (ARMS) for automatic trace and metrics collection. Requires a pre-created CMS 2.0 workspace.
-    Default: false
-  CmsArmsLicenseKey:
-    Type: String
-    Label:
-      en: ARMS License Key
-      zh-cn: ARMS 鉴权 License Key
-    Description:
-      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 authToken 字段。可在云监控2.0控制台的接入中心获取。
-      en: Obtained from CMS 2.0 GetServiceObservability API, the authToken field in entryPointInfo.
-    Default: ''
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - true
-            - ${EnableCmsObservability}
-  CmsArmsProject:
-    Type: String
-    Label:
-      en: ARMS Project
-      zh-cn: ARMS 项目名
-    Description:
-      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 project 字段。
-      en: Obtained from CMS 2.0 GetServiceObservability API, the project field in entryPointInfo.
-    Default: ''
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - true
-            - ${EnableCmsObservability}
-  CmsWorkspaceName:
-    Type: String
-    Label:
-      en: CMS Workspace Name
-      zh-cn: 云监控工作空间名称
-    Description:
-      zh-cn: 云监控2.0工作空间名称。如不填写，将使用默认工作空间 default-cms-${主账号UID}-${RegionId}。可在云监控2.0控制台查看。
-      en: CMS 2.0 workspace name. If empty, defaults to default-cms-${AccountUID}-${RegionId}.
-    Default: ''
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - true
-            - ${EnableCmsObservability}
-  CmsServiceName:
-    Type: String
-    Label:
-      en: CMS Service Name
-      zh-cn: 应用监控服务名
-    Description:
-      zh-cn: 上报到云监控2.0应用监控的服务名称，用户可自定义。
-      en: Service name reported to CMS 2.0 application monitoring, user-defined.
-    Default: openclaw
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - true
-            - ${EnableCmsObservability}
-  CmsEndpoint:
-    Type: String
-    Label:
-      en: CMS Endpoint
-      zh-cn: CMS 上报端点
-    Description:
-      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 publicDomain 或 privateDomain 字段。
-      en: Obtained from CMS 2.0 GetServiceObservability API, the publicDomain or privateDomain field in entryPointInfo.
-    Default: ''
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - true
-            - ${EnableCmsObservability}
-
 Resources:
-  # ==================== VPC & 业务 VSW（3 可用区） ====================
   Vpc:
     Type: ALIYUN::ECS::VPC
     Condition: CreateNewVpcCondition
@@ -1219,8 +1058,6 @@ Resources:
         Ref: VSwitchCidrBlock3
       VSwitchName:
         Fn::Sub: biz-vsw3-${ALIYUN::StackName}
-
-  # ==================== OpenClaw 独立 VSW（3 可用区） ====================
   OpenClawVSwitch1:
     Type: ALIYUN::ECS::VSwitch
     Condition: CreateNewVpcCondition
@@ -1266,10 +1103,6 @@ Resources:
         Ref: OpenClawVSwitchCidrBlock3
       VSwitchName:
         Fn::Sub: openclaw-vsw3-${ALIYUN::StackName}
-
-  # ==================== ACK 集群安全组（normal 类型） ====================
-  # normal 安全组作为 ACK 集群安全组，让 ACK 自动管理基础规则
-  # normal 安全组默认同组内互通（InnerAccessPolicy=Accept），保证集群组件正常运行
   OpenClawSecurityGroup:
     Type: ALIYUN::ECS::SecurityGroup
     Properties:
@@ -1368,11 +1201,6 @@ Resources:
                       - VSwitches
           Priority: 1
           Description: 允许OpenClaw VSwitch3网段访问Poseidon 9082
-
-  # ==================== OpenClaw Pod 隔离安全组（enterprise 类型） ====================
-  # enterprise 安全组仅用于 OpenClaw Pod（通过 PodNetworking CRD 关联）
-  # InnerAccessPolicy=Drop，同安全组内实例之间默认不互通，实现 Pod 间网络隔离
-  # 参考：https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/configure-security-group-rules-to-enforce-access-control-on-ack-clusters
   OpenClawIsolationSecurityGroup:
     Type: ALIYUN::ECS::SecurityGroup
     Properties:
@@ -1387,9 +1215,7 @@ Resources:
         Fn::Sub: openclaw-isolation-sg-${ALIYUN::StackName}
       Description: OpenClaw Pod 隔离安全组（enterprise类型），通过 PodNetworking 关联到 OpenClaw Pod
       SecurityGroupType: enterprise
-      # ---- 入方向规则 ----
       SecurityGroupIngress:
-        # 允许 VPC 主网段全端口访问（API Server、kubelet 健康检查等）
         - IpProtocol: tcp
           PortRange: 1/65535
           SourceCidrIp:
@@ -1418,7 +1244,6 @@ Resources:
                       - Vpcs
           Priority: 1
           Description: 允许VPC主网段UDP全端口访问
-        # 允许 OpenClaw 3 个 VSwitch 网段（kubelet 健康检查等）
         - IpProtocol: tcp
           PortRange: 1/65535
           SourceCidrIp:
@@ -1503,7 +1328,6 @@ Resources:
                       - VSwitches
           Priority: 1
           Description: 允许OpenClaw VSwitch3 UDP
-        # 允许云产品网段（100.64.0.0/10，含 metadata/DNS/ACR/SLB 等）
         - IpProtocol: tcp
           PortRange: 1/65535
           SourceCidrIp: 100.64.0.0/10
@@ -1514,10 +1338,7 @@ Resources:
           SourceCidrIp: 100.64.0.0/10
           Priority: 1
           Description: 允许云产品网段UDP(metadata/DNS/ACR/SLB)
-      # ---- 出方向规则 ----
-      # enterprise 安全组默认拒绝所有出方向，必须显式放行
       SecurityGroupEgress:
-        # 允许云产品网段（100.64.0.0/10，含 metadata/DNS/ACR/SLB 等）
         - IpProtocol: tcp
           PortRange: 1/65535
           DestCidrIp: 100.64.0.0/10
@@ -1528,7 +1349,6 @@ Resources:
           DestCidrIp: 100.64.0.0/10
           Priority: 1
           Description: 允许云产品网段UDP(metadata/DNS/ACR/SLB)
-        # 允许访问 API Server 6443（VPC 主网段）
         - IpProtocol: tcp
           PortRange: 6443/6443
           DestCidrIp:
@@ -1543,14 +1363,12 @@ Resources:
                       - Vpcs
           Priority: 2
           Description: 允许访问API Server 6443(VPC主网段)
-        # 允许访问 API Server 6443（ServiceCIDR）
         - IpProtocol: tcp
           PortRange: 6443/6443
           DestCidrIp:
             Ref: ServiceCidr
           Priority: 2
           Description: 允许访问API Server 6443(ServiceCIDR)
-        # 允许访问 Poseidon 9082（VPC 主网段）
         - IpProtocol: tcp
           PortRange: 9082/9082
           DestCidrIp:
@@ -1565,7 +1383,6 @@ Resources:
                       - Vpcs
           Priority: 2
           Description: 允许访问Poseidon 9082(VPC主网段)
-        # 允许 kubelet 通信（VPC 主网段）
         - IpProtocol: tcp
           PortRange: 10250/10255
           DestCidrIp:
@@ -1580,7 +1397,6 @@ Resources:
                       - Vpcs
           Priority: 2
           Description: 允许kubelet通信TCP(VPC主网段)
-        # 允许 kube-dns（ServiceCIDR）
         - IpProtocol: tcp
           PortRange: 53/53
           DestCidrIp:
@@ -1593,7 +1409,6 @@ Resources:
             Ref: ServiceCidr
           Priority: 2
           Description: 允许kube-dns UDP
-        # 允许 VPC 内 DNS
         - IpProtocol: tcp
           PortRange: 53/53
           DestCidrIp:
@@ -1622,10 +1437,6 @@ Resources:
                       - Vpcs
           Priority: 2
           Description: 允许VPC内DNS UDP
-        # ---- 以下为公网出方向（enterprise 安全组默认 Drop，未放行的流量自动拒绝） ----
-        # 注意：不使用显式 drop 规则，因为 ECI 底层初始化通信会被 drop 规则阻断
-        # enterprise 安全组 InnerAccessPolicy=Drop 已天然实现 Pod 间隔离
-        # 允许公网访问（通过 NAT 网关出去，优先级最低）
         - IpProtocol: tcp
           PortRange: 1/65535
           DestCidrIp: 0.0.0.0/0
@@ -1636,8 +1447,6 @@ Resources:
           DestCidrIp: 0.0.0.0/0
           Priority: 100
           Description: 允
-
-  # ==================== ACK 集群 + VirtualNode ====================
   Sleep:
     Type: ALIYUN::ROS::Sleep
     DependsOn:
@@ -1650,7 +1459,7 @@ Resources:
       Name:
         Fn::Sub: openclaw-ack-${ALIYUN::StackName}
       ClusterSpec: ack.pro.small
-      KubernetesVersion: '1.35.2-aliyun.1'
+      KubernetesVersion: 1.35.2-aliyun.1
       ChargeType: PostPaid
       SecurityGroupId:
         Fn::GetAtt:
@@ -1756,9 +1565,6 @@ Resources:
       ProxyMode: ipvs
       DisableRollback: true
       TimeoutMins: 60
-
-  # ========== Addon 组件安装（带依赖链） ==========
-  # Step 1: ALB Ingress Controller（基础网络，使用业务 VSW 的前两个可用区）
   AlbIngressAddon:
     Type: ALIYUN::CS::ClusterAddons
     DependsOn: Sleep
@@ -1802,13 +1608,11 @@ Resources:
                     - EnablePublicIpConditions
                     - Internet
                     - Intranet
-  # Step 2: 等待 ALB Ingress 就绪
   AlbIngressSleep:
     Type: ALIYUN::ROS::Sleep
     DependsOn: AlbIngressAddon
     Properties:
       CreateDuration: 180
-  # ========== 查询 ALB 实例 ==========
   AlbDataSource:
     Type: DATASOURCE::ALB::LoadBalancers
     DependsOn: AddonSleep
@@ -1831,7 +1635,6 @@ Resources:
             Fn::GetAtt:
               - AckCluster
               - ClusterId
-  # Step 2.5: VirtualNode（ECI 虚拟节点，用于调度 Sandbox Pod 到 ECI）
   VirtualNodeAddon:
     Type: ALIYUN::CS::ClusterAddons
     DependsOn: AlbIngressSleep
@@ -1876,8 +1679,6 @@ Resources:
     DependsOn: VirtualNodeAddon
     Properties:
       CreateDuration: 120
-
-  # Step 3: arms-prometheus（提供 Prometheus Operator CRD，ack-sandbox-manager 依赖 ServiceMonitor）
   ArmsPrometheusAddon:
     Type: ALIYUN::CS::ClusterAddons
     DependsOn: AlbIngressSleep
@@ -1889,15 +1690,11 @@ Resources:
       InstalledIgnore: true
       Addons:
         - Name: arms-prometheus
-
-  # 等待 Prometheus Operator CRD（ServiceMonitor 等）注册完成
   ArmsPrometheusSleep:
     Type: ALIYUN::ROS::Sleep
     DependsOn: ArmsPrometheusAddon
     Properties:
       CreateDuration: 60
-
-  # Step 3.5: Poseidon 网络策略组件（提供 GlobalTrafficPolicy / TrafficPolicy CRD）
   PoseidonAddon:
     Type: ALIYUN::CS::ClusterAddons
     DependsOn: ArmsPrometheusSleep
@@ -1925,8 +1722,6 @@ Resources:
     DependsOn: PoseidonAddon
     Properties:
       CreateDuration: 60
-
-  # Step 4: Sandbox Controller
   SandboxControllerAddon:
     Type: ALIYUN::CS::ClusterAddons
     DependsOn: PoseidonSleep
@@ -1938,9 +1733,7 @@ Resources:
       Addons:
         - Name: ack-agent-sandbox-controller
           Config: '{"workers":{"sandboxWorkers":200,"sandboxsetWorkers":10,"sandboxclaimWorkers":200},"featureGate":""}'
-          Version: 'v0.5.6'
-
-  # Step 5: Sandbox Manager
+          Version: v0.5.6
   SandboxManagerAddon:
     Type: ALIYUN::CS::ClusterAddons
     DependsOn: SandboxControllerAddon
@@ -1952,7 +1745,7 @@ Resources:
       InstalledIgnore: true
       Addons:
         - Name: ack-sandbox-manager
-          Version: 'v0.4.2'
+          Version: v0.4.3
           Config:
             Fn::Sub:
               - '{"sandboxManager":{"replicaCount":3,"acs":${SandboxManagerScheduleToVirtualNode},"e2b":{"domain":"${E2BDomainAddress}","enableAuth":true,"adminApiKey":"${AdminApiKey}","maxTimeout":2592000},"ingress":{"className":"alb"},"controller":{"resources":{"cpu":"${SandboxManagerCpu}","memory":"${SandboxManagerMemory}"},"logLevel":5,"enableSLS":true,"maxClaimWorkers":100,"maxCreateQPS":200,"createPodInsteadOfSandbox":false,"extProcMaxConcurrency":3000}}}'
@@ -1966,13 +1759,11 @@ Resources:
                   Ref: SandboxManagerMemory
                 SandboxManagerScheduleToVirtualNode:
                   Ref: SandboxManagerScheduleToVirtualNode
-  # 等待所有 Addon 就绪（GlobalTrafficPolicy CRD 需要网络策略组件完全就绪）
   AddonSleep:
     Type: ALIYUN::ROS::Sleep
     DependsOn: SandboxManagerAddon
     Properties:
       CreateDuration: 180
-  # 获取集群 Kubeconfig
   ClusterUserKubeconfig:
     Type: DATASOURCE::CS::ClusterUserKubeconfig
     Properties:
@@ -1980,8 +1771,6 @@ Resources:
         Fn::GetAtt:
           - AckCluster
           - ClusterId
-
-  # ==================== DataSource：动态查询 VPC CIDR（用于安全组出方向精确 deny） ====================
   VpcDataSource:
     Type: DATASOURCE::VPC::Vpcs
     DependsOn: Sleep
@@ -1993,9 +1782,6 @@ Resources:
                 - Vpc
                 - VpcId
             - Ref: VpcId
-
-  # ==================== DataSource：动态获取集群信息 ====================
-  # 查询集群详情，获取 MasterUrl（含 API Server 内网 IP）
   ClusterDataSource:
     Type: DATASOURCE::CS::KubernetesCluster
     DependsOn: Sleep
@@ -2004,8 +1790,6 @@ Resources:
         Fn::GetAtt:
           - AckCluster
           - ClusterId
-
-  # 查询 VPC 内的 NAT 网关列表，获取集群默认 NAT 网关的内网 IP
   DefaultNatGatewayDataSource:
     Type: DATASOURCE::VPC::NatGateways
     DependsOn: Sleep
@@ -2019,54 +1803,42 @@ Resources:
           - Ref: VpcId
       Status: Available
       NatType: Enhanced
-
-  # ==================== DataSource：查询业务 VSwitch CIDR（已有 VPC 场景） ====================
-  # 用于安全组入方向规则，实现精确到 VSwitch 网段的最小权限控制
   BusinessVSwitch1DataSource:
     Type: DATASOURCE::VPC::VSwitches
     Condition: UseExistingVpcCondition
     Properties:
       VSwitchIds:
         - Ref: VSwitchId1
-
   BusinessVSwitch2DataSource:
     Type: DATASOURCE::VPC::VSwitches
     Condition: UseExistingVpcCondition
     Properties:
       VSwitchIds:
         - Ref: VSwitchId2
-
   BusinessVSwitch3DataSource:
     Type: DATASOURCE::VPC::VSwitches
     Condition: UseExistingVpcCondition
     Properties:
       VSwitchIds:
         - Ref: VSwitchId3
-
-  # ==================== DataSource：查询 OpenClaw VSwitch CIDR（已有 VPC 场景） ====================
   OpenClawVSwitch1DataSource:
     Type: DATASOURCE::VPC::VSwitches
     Condition: UseExistingVpcCondition
     Properties:
       VSwitchIds:
         - Ref: OpenClawVSwitchId1
-
   OpenClawVSwitch2DataSource:
     Type: DATASOURCE::VPC::VSwitches
     Condition: UseExistingVpcCondition
     Properties:
       VSwitchIds:
         - Ref: OpenClawVSwitchId2
-
   OpenClawVSwitch3DataSource:
     Type: DATASOURCE::VPC::VSwitches
     Condition: UseExistingVpcCondition
     Properties:
       VSwitchIds:
         - Ref: OpenClawVSwitchId3
-
-  # ==================== OpenClaw 自定义路由表 ====================
-  # OpenClaw VSwitch 使用独立路由表，默认路由指向 OpenClaw NAT 网关，实现出公网流量隔离
   OpenClawRouteTable:
     Type: ALIYUN::VPC::RouteTable
     DependsOn: Sleep
@@ -2081,10 +1853,6 @@ Resources:
       RouteTableName:
         Fn::Sub: openclaw-rt-${ALIYUN::StackName}
       Description: OpenClaw VSwitch 独立路由表，出公网流量走 OpenClaw NAT 网关
-
-  # ==================== OpenClaw 独立 NAT 网关 ====================
-  # 为 OpenClaw VSwitch 创建独立 NAT 网关，实现出公网流量隔离
-  # 必须在集群创建之后再创建，否则集群会复用 OpenClaw NAT 而不创建自己的默认 NAT
   OpenClawNatGateway:
     Type: ALIYUN::VPC::NatGateway
     DependsOn: Sleep
@@ -2108,8 +1876,6 @@ Resources:
       NatType: Enhanced
       InternetChargeType: PayByLcu
       Description: OpenClaw Sandbox Pod 独立 NAT 网关，出公网流量隔离
-
-  # OpenClaw NAT 网关绑定的 EIP
   OpenClawNatEip:
     Type: ALIYUN::VPC::EIP
     Properties:
@@ -2119,15 +1885,11 @@ Resources:
       Name:
         Fn::Sub: openclaw-nat-eip-${ALIYUN::StackName}
       Description: OpenClaw NAT 网关专用 EIP，Sandbox Pod 出公网流量均经此 IP
-
-  # 等待 EIP 状态变为 Available（避免 IncorrectEipStatus 竞态条件）
   OpenClawNatEipReady:
     Type: ALIYUN::ROS::Sleep
     DependsOn: OpenClawNatEip
     Properties:
       CreateDuration: 10
-
-  # 将 EIP 绑定到 OpenClaw NAT 网关
   OpenClawNatEipAssociation:
     Type: ALIYUN::VPC::EIPAssociation
     DependsOn:
@@ -2142,8 +1904,6 @@ Resources:
         Fn::GetAtt:
           - OpenClawNatGateway
           - NatGatewayId
-
-  # ==================== OpenClaw 路由表关联与路由 ====================
   OpenClawRouteEntry:
     Type: ALIYUN::ECS::Route
     DependsOn:
@@ -2160,7 +1920,6 @@ Resources:
         Fn::GetAtt:
           - OpenClawNatGateway
           - NatGatewayId
-
   OpenClawRouteTableAssociation1:
     Type: ALIYUN::VPC::RouteTableAssociation
     DependsOn: OpenClawRouteEntry
@@ -2176,8 +1935,6 @@ Resources:
               - OpenClawVSwitch1
               - VSwitchId
           - Ref: OpenClawVSwitchId1
-
-  # 链式依赖 Association1，避免多个路由表关联并发操作同一 VSwitch 导致中间态报错
   OpenClawRouteTableAssociation2:
     Type: ALIYUN::VPC::RouteTableAssociation
     DependsOn:
@@ -2195,8 +1952,6 @@ Resources:
               - OpenClawVSwitch2
               - VSwitchId
           - Ref: OpenClawVSwitchId2
-
-  # 链式依赖 Association2，避免多个路由表关联并发操作同一 VSwitch 导致中间态报错
   OpenClawRouteTableAssociation3:
     Type: ALIYUN::VPC::RouteTableAssociation
     Condition: OpenClawVSwitch3NeedsRouteTable
@@ -2215,8 +1970,6 @@ Resources:
               - OpenClawVSwitch3
               - VSwitchId
           - Ref: OpenClawVSwitchId3
-
-  # SNAT 规则：OpenClaw VSwitch1 流量走独立 NAT
   OpenClawSnatEntry1:
     Type: ALIYUN::VPC::SnatEntry
     DependsOn: OpenClawNatEipAssociation
@@ -2237,9 +1990,6 @@ Resources:
                 - VSwitchId
             - Ref: OpenClawVSwitchId1
       SnatEntryName: openclaw-snat-vsw1
-
-  # SNAT 规则：OpenClaw VSwitch2 流量走独立 NAT
-  # 链式依赖 SnatEntry1，避免多个 SNAT 规则并发操作同一 VSwitch 导致中间态报错
   OpenClawSnatEntry2:
     Type: ALIYUN::VPC::SnatEntry
     DependsOn:
@@ -2262,9 +2012,6 @@ Resources:
                 - VSwitchId
             - Ref: OpenClawVSwitchId2
       SnatEntryName: openclaw-snat-vsw2
-
-  # SNAT 规则：OpenClaw VSwitch3 流量走独立 NAT
-  # 链式依赖 SnatEntry2，避免多个 SNAT 规则并发操作同一 VSwitch 导致中间态报错
   OpenClawSnatEntry3:
     Type: ALIYUN::VPC::SnatEntry
     Condition: OpenClawVSwitch3NeedsRouteTable
@@ -2288,8 +2035,6 @@ Resources:
                 - VSwitchId
             - Ref: OpenClawVSwitchId3
       SnatEntryName: openclaw-snat-vsw3
-
-  # ==================== TLS Secret 配置 ====================
   ClusterAppliaction:
     Type: ALIYUN::CS::ClusterApplication
     DependsOn: AddonSleep
@@ -2317,11 +2062,9 @@ Resources:
         Fn::GetAtt:
           - AckCluster
           - ClusterId
-
-  # ==================== LoongCollector 日志采集配置 ====================
   LoongCollectorSeesionCR:
-    Type: "ALIYUN::CS::ClusterApplication"
-    DependsOn: "AddonSleep"
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn: AddonSleep
     Properties:
       YamlContent:
         Fn::Sub:
@@ -2368,10 +2111,9 @@ Resources:
         Fn::GetAtt:
           - AckCluster
           - ClusterId
-
   LoongCollectorRuntimeCR:
-    Type: "ALIYUN::CS::ClusterApplication"
-    DependsOn: "AddonSleep"
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn: AddonSleep
     Properties:
       YamlContent:
         Fn::Sub:
@@ -2414,8 +2156,6 @@ Resources:
         Fn::GetAtt:
           - AckCluster
           - ClusterId
-
-  # ==================== TrafficPolicy 网络隔离策略 ====================
   GlobalTrafficPolicyApplication:
     Type: ALIYUN::CS::ClusterApplication
     DependsOn: AddonSleep
@@ -2480,7 +2220,6 @@ Resources:
                     - Fn::GetAtt:
                         - OpenClawVSwitch3DataSource
                         - VSwitches
-
   OpenClawTrafficPolicyApplication:
     Type: ALIYUN::CS::ClusterApplication
     DependsOn: AddonSleep
@@ -2559,10 +2298,6 @@ Resources:
               Ref: SandboxNamespace
             VpcCidr:
               Ref: VpcCidrBlock
-
-  # ==================== OpenClaw PodNetworking（为 ACS Pod 配置独立 VSwitch 和安全组） ====================
-  # ACK VirtualNode + ACS 场景下，通过 PodNetworking CRD 将 Sandbox Pod 放到 OpenClaw 隔离 VSwitch
-  # ECI 注解 (k8s.aliyun.com/eci-vswitch) 在 ACS 模式下不生效，必须使用 PodNetworking
   OpenClawPodNetworking:
     Type: ALIYUN::CS::ClusterApplication
     DependsOn:
@@ -2617,8 +2352,6 @@ Resources:
                     - OpenClawVSwitch3
                     - VSwitchId
                 - Ref: OpenClawVSwitchId3
-
-  # ==================== OpenClaw SandboxSet ====================
   OpenClawSandboxSet:
     Type: ALIYUN::CS::ClusterApplication
     DependsOn:
@@ -2642,10 +2375,6 @@ Resources:
             metadata:
               name: openclaw
               namespace: ${SandboxNamespace}
-              annotations:
-                e2b.agents.kruise.io/should-init-envd: "true"
-              labels:
-                app: openclaw
             spec:
               persistentContents:
                 - filesystem
@@ -2661,9 +2390,13 @@ Resources:
                     network.alibabacloud.com/enable-network-policy-agent: "true"
                     network.alibabacloud.com/network-policy-mode: "traffic-policy"
                 spec:
-                  restartPolicy: Always
                   automountServiceAccountToken: false
                   enableServiceLinks: false
+                  hostNetwork: false
+                  hostPID: false
+                  hostIPC: false
+                  shareProcessNamespace: false
+                  hostname: openclaw
                   dnsPolicy: None
                   dnsConfig:
                     nameservers:
@@ -2683,9 +2416,18 @@ Resources:
                       operator: Exists
                       effect: NoSchedule
                   initContainers:
+                    - name: tini-copy
+                      image: kube-ai-registry.cn-shanghai.cr.aliyuncs.com/kube-ai/ubuntu-tini:krallin-ubuntu-tini-latest
+                      command: ["sh", "-c"]
+                      args:
+                        - |
+                          cp /usr/bin/tini /mnt/tini/tini
+                          chmod +x /mnt/tini/tini
+                      volumeMounts:
+                        - name: tini-volume
+                          mountPath: /mnt/tini
                     - name: init
                       image: "${InitImage}"
-                      imagePullPolicy: IfNotPresent
                       command: [ "sh", "/workspace/entrypoint_inner.sh" ]
                       volumeMounts:
                         - name: envd-volume
@@ -2697,19 +2439,51 @@ Resources:
                           value: "true"
                       restartPolicy: Always
                   containers:
-                    - name: openclaw
+                    - name: gateway
                       image: "${OpenClawImage}"
-                      imagePullPolicy: IfNotPresent
-                      command:
-                        - /bin/sh
-                        - -c
-                        - |
-                          ${CmsInstallCommand}
-                          exec /usr/local/bin/docker-entrypoint.sh
                       securityContext:
                         readOnlyRootFilesystem: false
-                        runAsGroup: 0
                         runAsUser: 0
+                        runAsGroup: 0
+                      command: ["/mnt/tini/tini", "--"]
+                      args:
+                        - bash
+                        - -c
+                        - |
+                          exec node openclaw.mjs gateway run --allow-unconfigured
+                      ports:
+                        - name: gateway
+                          containerPort: 18789
+                          protocol: TCP
+                        - name: runtime
+                          containerPort: 49983
+                          protocol: TCP
+                      env:
+                        - name: ENVD_DIR
+                          value: /mnt/envd
+                        - name: OPENCLAW_CONFIG_DIR
+                          value: /root/.openclaw
+                        - name: KUBERNETES_SERVICE_PORT_HTTPS
+                          value: ""
+                        - name: KUBERNETES_SERVICE_PORT
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP_PROTO
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP_ADDR
+                          value: ""
+                        - name: KUBERNETES_SERVICE_HOST
+                          value: ""
+                        - name: KUBERNETES_PORT
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP_PORT
+                          value: ""
+                      volumeMounts:
+                        - name: envd-volume
+                          mountPath: /mnt/envd
+                        - name: tini-volume
+                          mountPath: /mnt/tini
                       resources:
                         requests:
                           cpu: 2
@@ -2717,33 +2491,45 @@ Resources:
                         limits:
                           cpu: 2
                           memory: 4Gi
-                      env:
-                        - name: ENVD_DIR
-                          value: /mnt/envd
-                        - name: DASHSCOPE_API_KEY
-                          value: "${BaiLianApiKey}"
-                        - name: GATEWAY_TOKEN
-                          value: "${OpenClawGatewayToken}"
-                      volumeMounts:
-                        - name: envd-volume
-                          mountPath: /mnt/envd
-                      startupProbe:
-                        tcpSocket:
-                          port: 18789
-                        initialDelaySeconds: 30
-                        periodSeconds: 5
-                        failureThreshold: 30
                       lifecycle:
                         postStart:
                           exec:
                             command:
-                            - /bin/bash
-                            - -c
-                            - /mnt/envd/envd-run.sh
-                  terminationGracePeriodSeconds: 30
+                              - bash
+                              - /mnt/envd/envd-run.sh
+                      startupProbe:
+                        exec:
+                          command:
+                            - node
+                            - -e
+                            - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+                        initialDelaySeconds: 60
+                        periodSeconds: 30
+                        failureThreshold: 30
+                      # livenessProbe:
+                      #   exec:
+                      #     command:
+                      #       - node
+                      #       - -e
+                      #       - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+                      #   initialDelaySeconds: 60
+                      #   periodSeconds: 30
+                      #   timeoutSeconds: 10
+                      # readinessProbe:
+                      #   exec:
+                      #     command:
+                      #       - node
+                      #       - -e
+                      #       - "require('http').get('http://127.0.0.1:18789/readyz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+                      #   initialDelaySeconds: 15
+                      #   periodSeconds: 10
+                      #   timeoutSeconds: 5
+                  terminationGracePeriodSeconds: 1
                   volumes:
-                  - emptyDir: {}
-                    name: envd-volume
+                    - name: envd-volume
+                      emptyDir: { }
+                    - name: tini-volume
+                      emptyDir: { }
           - SandboxNamespace:
               Ref: SandboxNamespace
             OpenClawReplicas:
@@ -2755,26 +2541,6 @@ Resources:
                 - registry-${RegionId}-vpc.ack.aliyuncs.com/acs/agent-runtime:v0.0.2
                 - RegionId:
                     Ref: ALIYUN::Region
-            BaiLianApiKey:
-              Ref: BaiLianApiKey
-            OpenClawGatewayToken:
-              Ref: OpenClawGatewayToken
-            CmsInstallCommand:
-              Fn::If:
-                - EnableCmsObservabilityCondition
-                - Fn::Sub:
-                    - 'wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget.sh | bash -s -- --x-arms-license-key "${LicenseKey}" --x-arms-project "${ArmsProject}" --x-cms-workspace "${WorkspaceName}" --serviceName "${ServiceName}" --endpoint "${Endpoint}"'
-                    - LicenseKey:
-                        Ref: CmsArmsLicenseKey
-                      ArmsProject:
-                        Ref: CmsArmsProject
-                      WorkspaceName:
-                        Ref: CmsWorkspaceName
-                      ServiceName:
-                        Ref: CmsServiceName
-                      Endpoint:
-                        Ref: CmsEndpoint
-                - 'echo "CMS observability disabled, skipping ARMS injection"'
       WaitUntil:
         - Kind: SandboxSet
           ApiVersion: agents.kruise.io/v1alpha1
@@ -2785,8 +2551,6 @@ Resources:
           Operator: NotEmpty
           Timeout: 600
           FirstMatch: true
-
-  # ========== ALB Config Job（配置 HTTPS 443 监听器） ==========
   EditAlbConfigServiceAccount:
     Type: ALIYUN::CS::ClusterApplication
     Properties:
@@ -2873,8 +2637,6 @@ Resources:
                     set -x
                     echo "开始修改 AlbConfig 资源：alb"
                     kubectl patch albconfig.alibabacloud.com alb --type='json' -p='[{"op":"add","path":"/spec/listeners/-","value":{"port":443,"protocol":"HTTPS","requestTimeout":600}}]'
-
-  # ========== 测试 Pod ==========
   TestPod:
     Type: ALIYUN::CS::ClusterApplication
     DependsOn:
@@ -2906,7 +2668,7 @@ Resources:
                   effect: NoSchedule
               containers:
                 - name: acs-sandbox-test-pod
-                  image: compute-nest-registry.cn-hangzhou.cr.aliyuncs.com/computenest/acs-sandbox-test-pod:1.0.0
+                  image: compute-nest-registry.cn-hangzhou.cr.aliyuncs.com/computenest/acs-sandbox-test-pod:2.0.0
                   imagePullPolicy: Always
                   env:
                     - name: E2B_API_KEY
@@ -2924,8 +2686,6 @@ Resources:
               Ref: E2BDomainAddress
             TLSCert:
               Ref: TLSCert
-
-  # ========== PrivateZone — NewVPC 场景：创建全新 Zone ==========
   PrivateZone:
     Condition: EnablePrivateZoneForNewVpcCondition
     Type: ALIYUN::PVTZ::Zone
@@ -2960,19 +2720,15 @@ Resources:
         Fn::GetAtt:
           - PrivateZone
           - ZoneId
-      Rr: "*"
+      Rr: '*'
       Type: CNAME
       Value:
         Fn::Jq:
           - First
-          - '.[0].DNSName'
+          - .[0].DNSName
           - Fn::GetAtt:
               - AlbDataSource
               - LoadBalancers
-
-  # ========== PrivateZone — ExistingVPC + 无同名 Zone：创建新 Zone + 绑定 VPC + CNAME ==========
-  # 通过 Locals DATASOURCE::PVTZ::Zones 查询账号下所有 Zone，Eval 计算是否有同名 Zone
-  # ExistingVpcNeedNewZoneCondition = EnablePrivateZone=true AND ExistingVPC AND 无同名 Zone
   PrivateZoneForExistingVpc:
     Condition: ExistingVpcNeedNewZoneCondition
     Type: ALIYUN::PVTZ::Zone
@@ -3004,21 +2760,15 @@ Resources:
         Fn::GetAtt:
           - PrivateZoneForExistingVpc
           - ZoneId
-      Rr: "*"
+      Rr: '*'
       Type: CNAME
       Value:
         Fn::Jq:
           - First
-          - '.[0].DNSName'
+          - .[0].DNSName
           - Fn::GetAtt:
               - AlbDataSource
               - LoadBalancers
-
-  # ========== PrivateZone — ExistingVPC + 已有同名 Zone：复用已有 ZoneId ==========
-  # ExistingVpcReuseZoneCondition = EnablePrivateZone=true AND ExistingVPC AND 有同名 Zone
-  # ZoneId 来自 Locals 中的 ExistingPrivateZoneId（通过 Fn::Jq 从 DATASOURCE 查询结果提取）
-  # 因为 ExistingVpcZonesLocal 已通过 VpcId 过滤，查到的 Zone 一定已绑定该 VPC
-  # 所以无需再执行 ZoneVpcBinder，直接添加 CNAME 记录即可
   ExistingVpcReuseZoneCnameRecord:
     Condition: ExistingVpcReuseZoneCondition
     Type: ALIYUN::PVTZ::ZoneRecord
@@ -3027,16 +2777,15 @@ Resources:
     Properties:
       ZoneId:
         Ref: ExistingPrivateZoneId
-      Rr: "*"
+      Rr: '*'
       Type: CNAME
       Value:
         Fn::Jq:
           - First
-          - '.[0].DNSName'
+          - .[0].DNSName
           - Fn::GetAtt:
               - AlbDataSource
               - LoadBalancers
-
 Outputs:
   ALB_DNS_Name:
     Label:
@@ -3045,14 +2794,14 @@ Outputs:
     Value:
       Fn::Jq:
         - First
-        - '.[0].DNSName'
+        - .[0].DNSName
         - Fn::GetAtt:
             - AlbDataSource
             - LoadBalancers
   ACK控制台地址:
     Value:
       Fn::Sub:
-        - "https://cs.console.aliyun.com/#/k8s/cluster/${ClusterId}/v2/workload/pod?ns=sandbox-system"
+        - https://cs.console.aliyun.com/#/k8s/cluster/${ClusterId}/v2/workload/pod?ns=sandbox-system
         - ClusterId:
             Fn::GetAtt:
               - AckCluster
@@ -3142,7 +2891,7 @@ Outputs:
     Value:
       Fn::Jq:
         - First
-        - '.intranet_api_server_endpoint | capture("https?://(?<ip>[0-9.]+)") | .ip'
+        - .intranet_api_server_endpoint | capture("https?://(?<ip>[0-9.]+)") | .ip
         - Fn::GetAtt:
             - ClusterDataSource
             - MasterUrl
@@ -3156,11 +2905,10 @@ Outputs:
     Value:
       Fn::Jq:
         - First
-        - 'map(select(.Name | test("^openclaw") | not)) | .[0].NatGatewayPrivateInfo.PrivateIpAddress'
+        - map(select(.Name | test("^openclaw") | not)) | .[0].NatGatewayPrivateInfo.PrivateIpAddress
         - Fn::GetAtt:
             - DefaultNatGatewayDataSource
             - NatGateways
-
 Metadata:
   ALIYUN::ROS::Interface:
     Hidden:
@@ -3241,18 +2989,6 @@ Metadata:
           zh-cn: Sandbox 配置
       - Parameters:
           - SandboxNamespace
-          - BaiLianApiKey
-          - OpenClawGatewayToken
         Label:
           en: OpenClaw Configuration
           zh-cn: OpenClaw 默认配置
-      - Parameters:
-          - EnableCmsObservability
-          - CmsArmsLicenseKey
-          - CmsArmsProject
-          - CmsWorkspaceName
-          - CmsServiceName
-          - CmsEndpoint
-        Label:
-          en: CMS Observability
-          zh-cn: 云监控可观测性配置
