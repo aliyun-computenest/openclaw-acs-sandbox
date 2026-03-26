@@ -11,7 +11,7 @@ __pycache__/
 # Temp files
 bak/
 .d-connect/
-
+/docs/test*
 # Sensitive files
 fullchain.pem
 privkey.pem
