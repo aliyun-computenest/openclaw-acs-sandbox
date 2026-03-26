@@ -213,17 +213,12 @@ class NetworkValidator:
             self.add_result("VPC", "VPC 主网段", bool(primary_cidr),
                             f"主网段: {primary_cidr}")
 
-            openclaw_cidr = self.stack_params.get("OpenClawCidrBlock", "")
             if self.is_ack:
                 # ACK 模式使用已有 VPC，OpenClaw VSwitch 在主网段内，不需要辅助网段
                 self.add_result("VPC", "VPC 辅助网段 (OpenClaw)", True,
                                 f"ACK 模式: OpenClaw VSwitch 在主网段 {primary_cidr} 内，无需辅助网段")
-            elif openclaw_cidr:
-                has_openclaw_cidr = openclaw_cidr in secondary_cidrs
-                self.add_result("VPC", "VPC 辅助网段 (OpenClaw)", has_openclaw_cidr,
-                                f"预期: {openclaw_cidr}, 辅助网段: {secondary_cidrs}",
-                                severity="P0")
             else:
+                # 附加 CIDR 由模版自动从 OpenClawVSwitchCidrBlock1 推算，检查是否存在
                 self.add_result("VPC", "VPC 辅助网段 (OpenClaw)",
                                 len(secondary_cidrs) > 0,
                                 f"辅助网段: {secondary_cidrs}", severity="P0")
@@ -465,15 +460,23 @@ class NetworkValidator:
                                 else f"缺失 VPC CIDR 拒绝 (预期 {vpc_cidr})",
                                 severity="P0")
 
-                # Check egress: OpenClaw CIDR deny
-                openclaw_cidr = self.stack_params.get("OpenClawCidrBlock", "10.8.0.0/16")
+                # Check egress: OpenClaw VSwitch CIDR deny (3 条规则)
+                oc_vsw_cidrs = [
+                    self.stack_params.get(f"OpenClawVSwitchCidrBlock{i}", "")
+                    for i in range(1, 4)
+                ]
+                # 也检查 VPC 辅助网段作为 fallback
+                oc_deny_cidrs = [c for c in oc_vsw_cidrs if c] or self.vpc_secondary_cidrs
                 oc_deny = any(
-                    p.get("DestCidrIp") == openclaw_cidr and p.get("Policy") == "Drop"
+                    p.get("DestCidrIp") in oc_deny_cidrs and p.get("Policy") == "Drop"
+                    for p in egress
+                ) or any(
+                    p.get("DestCidrIp") in self.vpc_secondary_cidrs and p.get("Policy") == "Drop"
                     for p in egress
                 )
                 self.add_result("SecurityGroup", "出方向拒绝 OpenClaw 网段", oc_deny,
-                                f"{openclaw_cidr} 已拒绝" if oc_deny
-                                else f"缺失 OpenClaw CIDR 拒绝 (预期 {openclaw_cidr})",
+                                f"OpenClaw VSwitch CIDRs 已拒绝" if oc_deny
+                                else f"缺失 OpenClaw CIDR 拒绝 (预期 {oc_deny_cidrs})",
                                 severity="P0")
 
                 # Check egress: DNS to VPC CIDR allowed
@@ -916,35 +919,54 @@ class NetworkValidator:
                 self.add_result("NetTest", "Pod IP 获取", True,
                                 f"Pod IP: {pod_ip} [测试模版: 无独立 OpenClaw 网段，跳过网段归属检查]")
             elif self.is_ack:
-                # ACK 模式下 OpenClaw Pod 应该在 OpenClaw 独立网段（如 10.8.0.0/16）
-                # 或在 VPC 主网段内，取决于 PodNetworking 配置
-                openclaw_cidr = self.stack_params.get("OpenClawCidrBlock", "")
+                # ACK 模式下 OpenClaw Pod 应该在 OpenClaw VSwitch 网段或 VPC 主网段内
+                oc_vsw_cidrs = [
+                    self.stack_params.get(f"OpenClawVSwitchCidrBlock{i}", "")
+                    for i in range(1, 4)
+                ]
                 vpc_cidr = self.vpc_primary_cidr or "192.168.0.0/16"
                 try:
                     pod_addr = ipaddress.ip_address(pod_ip)
-                    is_in_openclaw = False
-                    if openclaw_cidr:
-                        is_in_openclaw = pod_addr in ipaddress.ip_network(openclaw_cidr, strict=False)
+                    is_in_openclaw = any(
+                        pod_addr in ipaddress.ip_network(c, strict=False)
+                        for c in oc_vsw_cidrs if c
+                    )
+                    is_in_secondary = any(
+                        pod_addr in ipaddress.ip_network(c, strict=False)
+                        for c in self.vpc_secondary_cidrs if c
+                    )
                     is_in_vpc = pod_addr in ipaddress.ip_network(vpc_cidr, strict=False)
-                    is_valid = is_in_openclaw or is_in_vpc
+                    is_valid = is_in_openclaw or is_in_secondary or is_in_vpc
                 except ValueError:
                     is_in_openclaw = False
                     is_in_vpc = False
                     is_valid = False
-                location = f"OpenClaw 网段 {openclaw_cidr}" if is_in_openclaw else (
-                    f"VPC 主网段 {vpc_cidr}" if is_in_vpc else "未知网段")
+                matched_cidr = next(
+                    (c for c in oc_vsw_cidrs if c and pod_addr in ipaddress.ip_network(c, strict=False)),
+                    None
+                ) if is_in_openclaw else None
+                location = (f"OpenClaw VSwitch 网段 {matched_cidr}" if is_in_openclaw else
+                    (f"VPC 主网段 {vpc_cidr}" if is_in_vpc else "未知网段"))
                 self.add_result("NetTest", "Pod IP 网段归属", is_valid,
                                 f"Pod IP: {pod_ip} → {location}",
                                 severity="P0")
             else:
-                openclaw_cidr = self.stack_params.get("OpenClawCidrBlock", "10.8.0.0/16")
+                # ACS 模式：检查 Pod IP 是否在任一 OpenClaw VSwitch 网段或辅助 CIDR 内
+                oc_vsw_cidrs = [
+                    self.stack_params.get(f"OpenClawVSwitchCidrBlock{i}", "")
+                    for i in range(1, 4)
+                ]
+                oc_check_cidrs = [c for c in oc_vsw_cidrs if c] or self.vpc_secondary_cidrs
                 try:
-                    oc_net = ipaddress.ip_network(openclaw_cidr, strict=False)
-                    is_openclaw_cidr = ipaddress.ip_address(pod_ip) in oc_net
+                    pod_addr = ipaddress.ip_address(pod_ip)
+                    is_openclaw_cidr = any(
+                        pod_addr in ipaddress.ip_network(c, strict=False)
+                        for c in oc_check_cidrs
+                    )
                 except ValueError:
                     is_openclaw_cidr = False
                 self.add_result("NetTest", "Pod IP 在 OpenClaw 网段内", is_openclaw_cidr,
-                                f"Pod IP: {pod_ip} (预期在 {openclaw_cidr})"
+                                f"Pod IP: {pod_ip} (预期在 {oc_check_cidrs})"
                                 + ("" if is_openclaw_cidr else " [不在 OpenClaw 网段!]"),
                                 severity="P0")
 
@@ -1097,11 +1119,18 @@ class NetworkValidator:
                             vsw_name = vsws[0].get("VSwitchName", "")
                     except (json.JSONDecodeError, KeyError):
                         pass
-                openclaw_cidr_param = self.stack_params.get("OpenClawCidrBlock", "10.8.0.0/16")
+                # 检查 VSwitch CIDR 是否属于任一 OpenClaw VSwitch 网段或辅助 CIDR
+                oc_vsw_cidrs = [
+                    self.stack_params.get(f"OpenClawVSwitchCidrBlock{i}", "")
+                    for i in range(1, 4)
+                ]
+                oc_check_cidrs = [c for c in oc_vsw_cidrs if c] or self.vpc_secondary_cidrs
                 try:
-                    oc_net = ipaddress.ip_network(openclaw_cidr_param, strict=False)
                     vsw_net = ipaddress.ip_network(vsw_cidr, strict=False) if vsw_cidr else None
-                    cidr_match = vsw_net.subnet_of(oc_net) if vsw_net else False
+                    cidr_match = any(
+                        vsw_net.subnet_of(ipaddress.ip_network(c, strict=False))
+                        for c in oc_check_cidrs if c
+                    ) if vsw_net else False
                 except ValueError:
                     cidr_match = False
                 is_openclaw_vsw = "openclaw" in vsw_name.lower() or cidr_match

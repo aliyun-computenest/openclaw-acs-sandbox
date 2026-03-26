@@ -11,25 +11,17 @@ Conditions:
     Fn::Equals:
       - ExistingVPC
       - Ref: VpcOption
-  # NewVPC 场景 或 ExistingVPC+新建PrivateZone 场景：创建全新 PrivateZone
-  CreateNewPrivateZoneCondition:
+  # PrivateZone 启用条件（NewVPC 场景：始终创建新 Zone）
+  EnablePrivateZoneForNewVpcCondition:
     Fn::And:
       - Fn::Equals:
           - true
           - Ref: EnablePrivateZone
-      - Fn::Or:
-          - Fn::Equals:
-              - NewVPC
-              - Ref: VpcOption
-          - Fn::And:
-              - Fn::Equals:
-                  - ExistingVPC
-                  - Ref: VpcOption
-              - Fn::Equals:
-                  - NewPrivateZone
-                  - Ref: PrivateZoneOption
-  # ExistingVPC 场景下查询并复用已有 PrivateZone（VPC 下已存在同名 Zone）
-  UseExistingPrivateZoneCondition:
+      - Fn::Equals:
+          - NewVPC
+          - Ref: VpcOption
+  # PrivateZone 启用条件（ExistingVPC + 无同名 Zone：需要创建新 Zone + 绑定 VPC + CNAME）
+  ExistingVpcNeedNewZoneCondition:
     Fn::And:
       - Fn::Equals:
           - true
@@ -38,8 +30,21 @@ Conditions:
           - ExistingVPC
           - Ref: VpcOption
       - Fn::Equals:
-          - ExistingPrivateZone
-          - Ref: PrivateZoneOption
+          - true
+          - Ref: NeedNewZoneForExistingVpc
+  # PrivateZone 启用条件（ExistingVPC + 已有同名 Zone：复用已有 ZoneId，只添加 CNAME）
+  ExistingVpcReuseZoneCondition:
+    Fn::And:
+      - Fn::Equals:
+          - true
+          - Ref: EnablePrivateZone
+      - Fn::Equals:
+          - ExistingVPC
+          - Ref: VpcOption
+      - Fn::Not:
+          Fn::Equals:
+            - true
+            - Ref: NeedNewZoneForExistingVpc
   EnablePublicIpConditions:
     Fn::Equals:
       - true
@@ -63,6 +68,53 @@ Conditions:
           Fn::Equals:
             - Ref: OpenClawVSwitchId2
             - Ref: OpenClawVSwitchId3
+Locals:
+  # ========== ExistingVPC 场景：查询已绑定该 VPC 的 PrivateZone，判断是否需要创建新 Zone ==========
+  # Step 1: 查询已绑定指定 VPC 的 PrivateZone（DATASOURCE 类型 Locals）
+  # 通过 VpcId 过滤，只返回已绑定该 VPC 的 Zone
+  # NewVPC 场景下 VpcId 为空，ROS 不会执行此数据源查询
+  # 复用路径下查到的 Zone 一定已绑定该 VPC，无需再执行 ZoneVpcBinder
+  ExistingVpcZonesLocal:
+    Type: DATASOURCE::PVTZ::Zones
+    Properties:
+      RefreshOptions: Always
+      VpcId:
+        Ref: VpcId
+  # Step 2: 计算同名 Zone 的数量（空数组安全：. // [] 防止 null 输入）
+  # 返回匹配域名的 Zone 数量（0 = 无同名 Zone，>0 = 有同名 Zone）
+  ExistingZoneCount:
+    Type: Eval
+    Value:
+      Fn::Jq:
+        - First
+        - Fn::Sub:
+            - '(. // []) | [.[] | select(.ZoneName == "${Domain}")] | length'
+            - Domain:
+                Ref: E2BDomainAddress
+        - Fn::GetAtt:
+            - ExistingVpcZonesLocal
+            - Zones
+  # Step 3: 计算是否需要创建新 Zone（布尔值，供 Conditions 引用）
+  # true = 无同名 Zone 需要新建，false = 有同名 Zone 可以复用
+  NeedNewZoneForExistingVpc:
+    Type: Eval
+    Value:
+      Fn::Equals:
+        - Ref: ExistingZoneCount
+        - 0
+  # Step 4: 提取已有同名 Zone 的 ZoneId（无匹配时为空字符串 ""）
+  ExistingPrivateZoneId:
+    Type: Eval
+    Value:
+      Fn::Jq:
+        - First
+        - Fn::Sub:
+            - '(. // []) | [.[] | select(.ZoneName == "${Domain}")] | if length > 0 then .[0].ZoneId else "" end'
+            - Domain:
+                Ref: E2BDomainAddress
+        - Fn::GetAtt:
+            - ExistingVpcZonesLocal
+            - Zones
 Parameters:
   # ==================== 前置确认 ====================
   WhitelistConfirmation:
@@ -512,6 +564,24 @@ Parameters:
             - ExistingVPC
             - ${VpcOption}
 
+  # ==================== OpenClaw 附加 VPC 网段（新建 VPC 场景） ====================
+  OpenClawSecondaryCidrBlock:
+    Type: String
+    Label:
+      en: OpenClaw Secondary CIDR Block
+      zh-cn: OpenClaw 附加 VPC 网段
+    Description:
+      zh-cn: 新建 VPC 时需要为 OpenClaw 隔离网段添加附加 CIDR。此网段必须包含下方 3 个 OpenClaw 交换机网段。
+      en: Secondary CIDR block for OpenClaw isolated subnets when creating a new VPC. Must contain all 3 OpenClaw VSwitch CIDRs below.
+    Default: 10.8.0.0/16
+    Required: true
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+
   # ==================== OpenClaw 独立 VSW 网段（新建 VPC 场景） ====================
   OpenClawVSwitchCidrBlock1:
     Type: String
@@ -525,7 +595,6 @@ Parameters:
     Required: true
     AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
     AssociationPropertyMetadata:
-      VpcCidrBlock: OpenClawCidrBlock
       Visible:
         Condition:
           Fn::Equals:
@@ -543,7 +612,6 @@ Parameters:
     Required: true
     AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
     AssociationPropertyMetadata:
-      VpcCidrBlock: OpenClawCidrBlock
       Visible:
         Condition:
           Fn::Equals:
@@ -561,24 +629,11 @@ Parameters:
     Required: true
     AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
     AssociationPropertyMetadata:
-      VpcCidrBlock: OpenClawCidrBlock
       Visible:
         Condition:
           Fn::Equals:
             - NewVPC
             - ${VpcOption}
-
-  # ==================== OpenClaw 网段汇总 CIDR（用于 TrafficPolicy） ====================
-  OpenClawCidrBlock:
-    Type: String
-    Label:
-      en: OpenClaw Aggregate CIDR
-      zh-cn: OpenClaw 汇总网段
-    Description:
-      zh-cn: OpenClaw 3 个 VSW 的汇总网段，用于 TrafficPolicy 全局隔离规则和安全组配置。应覆盖所有 OpenClaw VSW 网段
-      en: Aggregate CIDR covering all 3 OpenClaw VSwitches, used in GlobalTrafficPolicy deny rules and SecurityGroup
-    Default: 10.8.0.0/16
-    Required: true
 
   # ==================== 安全组精细化网段参数（动态获取） ====================
   # DownstreamCidrBlock: 使用业务 VSwitch 网段（VSwitchCidrBlock1/2/3），集群创建时自动确定
@@ -848,35 +903,7 @@ Parameters:
       zh-cn: 若需要内网访问，需要通过PrivateZone配置内网域名解析。打开此配置会自动创建PrivateZone，并设置内网权威域名的生效范围为所选的VPC。
       en: If internal network access is required, configure internal domain name resolution through PrivateZone.
     Default: true
-  PrivateZoneOption:
-    Type: String
-    Label:
-      zh-cn: PrivateZone 创建方式
-      en: PrivateZone Creation Mode
-    Description:
-      zh-cn: 选择新建 PrivateZone 或复用已有 PrivateZone。若该 VPC 下已存在同名域名的 PrivateZone，请选择"复用已有"以避免冲突。
-      en: Choose to create a new PrivateZone or reuse an existing one. If a PrivateZone with the same domain already exists in this VPC, select "Reuse Existing" to avoid conflicts.
-    AllowedValues:
-      - NewPrivateZone
-      - ExistingPrivateZone
-    Default: NewPrivateZone
-    AssociationPropertyMetadata:
-      ValueLabelMapping:
-        NewPrivateZone:
-          zh-cn: 新建 PrivateZone
-          en: Create New PrivateZone
-        ExistingPrivateZone:
-          zh-cn: 复用已有 PrivateZone
-          en: Reuse Existing PrivateZone
-      Visible:
-        Condition:
-          Fn::And:
-            - Fn::Equals:
-                - ExistingVPC
-                - ${VpcOption}
-            - Fn::Equals:
-                - true
-                - ${EnablePrivateZone}
+
   TLSCert:
     Type: String
     Label:
@@ -1061,7 +1088,7 @@ Resources:
           - Vpc
           - VpcId
       SecondaryCidrBlock:
-        Ref: OpenClawCidrBlock
+        Ref: OpenClawSecondaryCidrBlock
   BusinessVSwitch1:
     Type: ALIYUN::ECS::VSwitch
     Condition: CreateNewVpcCondition
@@ -1172,15 +1199,87 @@ Resources:
         - IpProtocol: tcp
           PortRange: 6443/6443
           SourceCidrIp:
-            Ref: OpenClawCidrBlock
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock1
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch1DataSource
+                      - VSwitches
           Priority: 1
-          Description: 允许OpenClaw Pod网段访问API Server 6443
+          Description: 允许OpenClaw VSwitch1网段访问API Server 6443
+        - IpProtocol: tcp
+          PortRange: 6443/6443
+          SourceCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock2
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch2DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许OpenClaw VSwitch2网段访问API Server 6443
+        - IpProtocol: tcp
+          PortRange: 6443/6443
+          SourceCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock3
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch3DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许OpenClaw VSwitch3网段访问API Server 6443
         - IpProtocol: tcp
           PortRange: 9082/9082
           SourceCidrIp:
-            Ref: OpenClawCidrBlock
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock1
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch1DataSource
+                      - VSwitches
           Priority: 1
-          Description: 允许OpenClaw Pod网段访问Poseidon 9082
+          Description: 允许OpenClaw VSwitch1网段访问Poseidon 9082
+        - IpProtocol: tcp
+          PortRange: 9082/9082
+          SourceCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock2
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch2DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许OpenClaw VSwitch2网段访问Poseidon 9082
+        - IpProtocol: tcp
+          PortRange: 9082/9082
+          SourceCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock3
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch3DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许OpenClaw VSwitch3网段访问Poseidon 9082
 
   # ==================== OpenClaw Pod 隔离安全组（enterprise 类型） ====================
   # enterprise 安全组仅用于 OpenClaw Pod（通过 PodNetworking CRD 关联）
@@ -1231,19 +1330,91 @@ Resources:
                       - Vpcs
           Priority: 1
           Description: 允许VPC主网段UDP全端口访问
-        # 允许 OpenClaw 附加 CIDR 网段（kubelet 健康检查等）
+        # 允许 OpenClaw 3 个 VSwitch 网段（kubelet 健康检查等）
         - IpProtocol: tcp
           PortRange: 1/65535
           SourceCidrIp:
-            Ref: OpenClawCidrBlock
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock1
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch1DataSource
+                      - VSwitches
           Priority: 1
-          Description: 允许OpenClaw附加CIDR TCP(kubelet健康检查)
+          Description: 允许OpenClaw VSwitch1 TCP(kubelet健康检查)
         - IpProtocol: udp
           PortRange: 1/65535
           SourceCidrIp:
-            Ref: OpenClawCidrBlock
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock1
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch1DataSource
+                      - VSwitches
           Priority: 1
-          Description: 允许OpenClaw附加CIDR UDP
+          Description: 允许OpenClaw VSwitch1 UDP
+        - IpProtocol: tcp
+          PortRange: 1/65535
+          SourceCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock2
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch2DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许OpenClaw VSwitch2 TCP(kubelet健康检查)
+        - IpProtocol: udp
+          PortRange: 1/65535
+          SourceCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock2
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch2DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许OpenClaw VSwitch2 UDP
+        - IpProtocol: tcp
+          PortRange: 1/65535
+          SourceCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock3
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch3DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许OpenClaw VSwitch3 TCP(kubelet健康检查)
+        - IpProtocol: udp
+          PortRange: 1/65535
+          SourceCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock3
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch3DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许OpenClaw VSwitch3 UDP
         # 允许云产品网段（100.64.0.0/10，含 metadata/DNS/ACR/SLB 等）
         - IpProtocol: tcp
           PortRange: 1/65535
@@ -1784,6 +1955,28 @@ Resources:
       VSwitchIds:
         - Ref: VSwitchId3
 
+  # ==================== DataSource：查询 OpenClaw VSwitch CIDR（已有 VPC 场景） ====================
+  OpenClawVSwitch1DataSource:
+    Type: DATASOURCE::VPC::VSwitches
+    Condition: UseExistingVpcCondition
+    Properties:
+      VSwitchIds:
+        - Ref: OpenClawVSwitchId1
+
+  OpenClawVSwitch2DataSource:
+    Type: DATASOURCE::VPC::VSwitches
+    Condition: UseExistingVpcCondition
+    Properties:
+      VSwitchIds:
+        - Ref: OpenClawVSwitchId2
+
+  OpenClawVSwitch3DataSource:
+    Type: DATASOURCE::VPC::VSwitches
+    Condition: UseExistingVpcCondition
+    Properties:
+      VSwitchIds:
+        - Ref: OpenClawVSwitchId3
+
   # ==================== OpenClaw 自定义路由表 ====================
   # OpenClaw VSwitch 使用独立路由表，默认路由指向 OpenClaw NAT 网关，实现出公网流量隔离
   OpenClawRouteTable:
@@ -2158,7 +2351,9 @@ Resources:
                 rules:
                   - action: deny
                     from:
-                      - cidr: ${OpenClawCidr}
+                      - cidr: ${OpenClawVSwitchCidr1}
+                      - cidr: ${OpenClawVSwitchCidr2}
+                      - cidr: ${OpenClawVSwitchCidr3}
                   - action: allow
                     from:
                       - cidr: 0.0.0.0/0
@@ -2167,8 +2362,36 @@ Resources:
                   - action: allow
                     to:
                       - cidr: 0.0.0.0/0
-          - OpenClawCidr:
-              Ref: OpenClawCidrBlock
+          - OpenClawVSwitchCidr1:
+              Fn::If:
+                - CreateNewVpcCondition
+                - Ref: OpenClawVSwitchCidrBlock1
+                - Fn::Jq:
+                    - First
+                    - .[0].CidrBlock
+                    - Fn::GetAtt:
+                        - OpenClawVSwitch1DataSource
+                        - VSwitches
+            OpenClawVSwitchCidr2:
+              Fn::If:
+                - CreateNewVpcCondition
+                - Ref: OpenClawVSwitchCidrBlock2
+                - Fn::Jq:
+                    - First
+                    - .[0].CidrBlock
+                    - Fn::GetAtt:
+                        - OpenClawVSwitch2DataSource
+                        - VSwitches
+            OpenClawVSwitchCidr3:
+              Fn::If:
+                - CreateNewVpcCondition
+                - Ref: OpenClawVSwitchCidrBlock3
+                - Fn::Jq:
+                    - First
+                    - .[0].CidrBlock
+                    - Fn::GetAtt:
+                        - OpenClawVSwitch3DataSource
+                        - VSwitches
 
   OpenClawTrafficPolicyApplication:
     Type: ALIYUN::CS::ClusterApplication
@@ -2594,33 +2817,30 @@ Resources:
 
   # ========== PrivateZone — NewVPC 场景：创建全新 Zone ==========
   PrivateZone:
-    Condition: CreateNewPrivateZoneCondition
+    Condition: EnablePrivateZoneForNewVpcCondition
     Type: ALIYUN::PVTZ::Zone
-    DependsOn: OpenClawSandboxSet
+    DependsOn: Vpc
     Properties:
       ProxyPattern: ZONE
       ZoneName:
         Ref: E2BDomainAddress
   PrivateZoneVpcBinder:
-    Condition: CreateNewPrivateZoneCondition
+    Condition: EnablePrivateZoneForNewVpcCondition
     Type: ALIYUN::PVTZ::ZoneVpcBinder
     Properties:
       Vpcs:
         - RegionId:
             Ref: ALIYUN::Region
           VpcId:
-            Fn::If:
-              - CreateNewVpcCondition
-              - Fn::GetAtt:
-                  - Vpc
-                  - VpcId
-              - Ref: VpcId
+            Fn::GetAtt:
+              - Vpc
+              - VpcId
       ZoneId:
         Fn::GetAtt:
           - PrivateZone
           - ZoneId
   PrivateZoneCnameRecord:
-    Condition: CreateNewPrivateZoneCondition
+    Condition: EnablePrivateZoneForNewVpcCondition
     Type: ALIYUN::PVTZ::ZoneRecord
     DependsOn:
       - PrivateZoneVpcBinder
@@ -2640,80 +2860,63 @@ Resources:
               - AlbDataSource
               - LoadBalancers
 
-  # ========== PrivateZone — ExistingVPC 场景：查询已有 Zone 并追加绑定 VPC ==========
-  # Step 1: 通过 VpcId 反查该 VPC 绑定的所有 PrivateZone
-  ExistingVpcZones:
-    Condition: UseExistingPrivateZoneCondition
-    Type: DATASOURCE::PVTZ::Zones
-    DependsOn: OpenClawSandboxSet
+  # ========== PrivateZone — ExistingVPC + 无同名 Zone：创建新 Zone + 绑定 VPC + CNAME ==========
+  # 通过 Locals DATASOURCE::PVTZ::Zones 查询账号下所有 Zone，Eval 计算是否有同名 Zone
+  # ExistingVpcNeedNewZoneCondition = EnablePrivateZone=true AND ExistingVPC AND 无同名 Zone
+  PrivateZoneForExistingVpc:
+    Condition: ExistingVpcNeedNewZoneCondition
+    Type: ALIYUN::PVTZ::Zone
     Properties:
-      VpcId:
-        Ref: VpcId
-      RefreshOptions: Always
-  # Step 2: 用 Fn::Jq 过滤出与 E2BDomainAddress 同名的 Zone，获取其 ZoneId
-  # Step 3: 通过 DATASOURCE::PVTZ::Zone 读取已有 Zone 的详情（获取 BindVpcs）
-  ExistingZoneInfo:
-    Condition: UseExistingPrivateZoneCondition
-    Type: DATASOURCE::PVTZ::Zone
-    DependsOn: ExistingVpcZones
-    Properties:
-      ZoneId:
-        Fn::Jq:
-          - First
-          - Fn::Sub:
-              - '.[] | select(.ZoneName == "${Domain}") | .ZoneId'
-              - Domain:
-                  Ref: E2BDomainAddress
-          - Fn::GetAtt:
-              - ExistingVpcZones
-              - Zones
-      RefreshOptions: Always
-  # Step 4: 合并已有 VPC 列表 + 当前 VPC，重新绑定（幂等，不会冲突）
-  ExistingPrivateZoneVpcBinder:
-    Condition: UseExistingPrivateZoneCondition
+      ProxyPattern: ZONE
+      ZoneName:
+        Ref: E2BDomainAddress
+  PrivateZoneVpcBinderForExistingVpc:
+    Condition: ExistingVpcNeedNewZoneCondition
     Type: ALIYUN::PVTZ::ZoneVpcBinder
-    DependsOn: ExistingZoneInfo
     Properties:
-      ZoneId:
-        Fn::Jq:
-          - First
-          - Fn::Sub:
-              - '.[] | select(.ZoneName == "${Domain}") | .ZoneId'
-              - Domain:
-                  Ref: E2BDomainAddress
-          - Fn::GetAtt:
-              - ExistingVpcZones
-              - Zones
       Vpcs:
-        Fn::ListMerge:
-          - Fn::Jq:
-              - First
-              - '[.[] | {VpcId: .VpcId, RegionId: .RegionId}]'
-              - Fn::GetAtt:
-                  - ExistingZoneInfo
-                  - BindVpcs
-          - - VpcId:
-                Ref: VpcId
-              RegionId:
-                Ref: ALIYUN::Region
-  # Step 5: 在已有 Zone 中创建 CNAME 记录（指向 ALB）
-  ExistingPrivateZoneCnameRecord:
-    Condition: UseExistingPrivateZoneCondition
+        - RegionId:
+            Ref: ALIYUN::Region
+          VpcId:
+            Ref: VpcId
+      ZoneId:
+        Fn::GetAtt:
+          - PrivateZoneForExistingVpc
+          - ZoneId
+  ExistingVpcNewZoneCnameRecord:
+    Condition: ExistingVpcNeedNewZoneCondition
     Type: ALIYUN::PVTZ::ZoneRecord
     DependsOn:
-      - ExistingPrivateZoneVpcBinder
+      - PrivateZoneVpcBinderForExistingVpc
       - AlbDataSource
     Properties:
       ZoneId:
+        Fn::GetAtt:
+          - PrivateZoneForExistingVpc
+          - ZoneId
+      Rr: "*"
+      Type: CNAME
+      Value:
         Fn::Jq:
           - First
-          - Fn::Sub:
-              - '.[] | select(.ZoneName == "${Domain}") | .ZoneId'
-              - Domain:
-                  Ref: E2BDomainAddress
+          - '.[0].DNSName'
           - Fn::GetAtt:
-              - ExistingVpcZones
-              - Zones
+              - AlbDataSource
+              - LoadBalancers
+
+  # ========== PrivateZone — ExistingVPC + 已有同名 Zone：复用已有 ZoneId ==========
+  # ExistingVpcReuseZoneCondition = EnablePrivateZone=true AND ExistingVPC AND 有同名 Zone
+  # ZoneId 来自 Locals 中的 ExistingPrivateZoneId（通过 Fn::Jq 从 DATASOURCE 查询结果提取）
+  # 因为 ExistingVpcZonesLocal 已通过 VpcId 过滤，查到的 Zone 一定已绑定该 VPC
+  # 所以无需再执行 ZoneVpcBinder，直接添加 CNAME 记录即可
+  ExistingVpcReuseZoneCnameRecord:
+    Condition: ExistingVpcReuseZoneCondition
+    Type: ALIYUN::PVTZ::ZoneRecord
+    DependsOn:
+      - AlbDataSource
+    Properties:
+      ZoneId:
+        Ref: ExistingPrivateZoneId
       Rr: "*"
       Type: CNAME
       Value:
@@ -2884,10 +3087,10 @@ Metadata:
           - OpenClawVSwitchId1
           - OpenClawVSwitchId2
           - OpenClawVSwitchId3
+          - OpenClawSecondaryCidrBlock
           - OpenClawVSwitchCidrBlock1
           - OpenClawVSwitchCidrBlock2
           - OpenClawVSwitchCidrBlock3
-          - OpenClawCidrBlock
         Label:
           en: OpenClaw Isolated VSwitch Configuration (3 AZ)
           zh-cn: OpenClaw 隔离网段配置（3 可用区）
@@ -2918,7 +3121,6 @@ Metadata:
           - TLSCert
           - TLSSecret
           - EnablePrivateZone
-          - PrivateZoneOption
           - AdminApiKey
           - SandboxManagerCpu
           - SandboxManagerMemory

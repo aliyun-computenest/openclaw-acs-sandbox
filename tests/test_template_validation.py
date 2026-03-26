@@ -144,7 +144,6 @@ class TemplateValidator:
             'VSwitchCidrBlock1', 'VSwitchCidrBlock2', 'VSwitchCidrBlock3',
             'OpenClawVSwitchId1', 'OpenClawVSwitchId2', 'OpenClawVSwitchId3',
             'OpenClawVSwitchCidrBlock1', 'OpenClawVSwitchCidrBlock2', 'OpenClawVSwitchCidrBlock3',
-            'OpenClawCidrBlock',
             'ServiceCidr',
             'E2BDomainAddress', 'TLSCert', 'TLSSecret',
             'AdminApiKey', 'EnablePublicIp', 'EnablePrivateZone',
@@ -274,7 +273,13 @@ class TemplateValidator:
             self.params.get(f'OpenClawVSwitchCidrBlock{i}', {}).get('Default', '')
             for i in range(1, 4)
         ]
-        oc_agg = self.params.get('OpenClawCidrBlock', {}).get('Default', '')
+        # OpenClawCidrBlock 已删除，从 OpenClawVSwitchCidrBlock1 自动推算汇总 CIDR
+        oc_vsw1_default = self.params.get('OpenClawVSwitchCidrBlock1', {}).get('Default', '')
+        if oc_vsw1_default:
+            parts = oc_vsw1_default.split('/')[0].split('.')
+            oc_agg = f"{parts[0]}.{parts[1]}.0.0/16" if len(parts) >= 2 else ''
+        else:
+            oc_agg = ''
         svc_cidr = self.params.get('ServiceCidr', {}).get('Default', '')
 
         # Check if VPC has SecondaryCidrBlocks configured
@@ -460,9 +465,13 @@ class TemplateValidator:
                 # VPC primary CIDR deny (static via Ref)
                 if isinstance(dest, dict) and 'Ref' in dest and dest['Ref'] == 'VpcCidrBlock':
                     egress_checks['vpc_deny'] = True
-                # OpenClaw secondary CIDR deny
-                if isinstance(dest, dict) and 'Ref' in dest and dest['Ref'] == 'OpenClawCidrBlock':
-                    egress_checks['openclaw_deny'] = True
+                # OpenClaw secondary CIDR deny (now uses individual VSwitch CIDRs via Fn::If)
+                if isinstance(dest, dict) and 'Fn::If' in dest:
+                    fn_if = dest['Fn::If']
+                    if isinstance(fn_if, list) and len(fn_if) >= 2:
+                        ref_val = fn_if[1] if isinstance(fn_if[1], dict) else {}
+                        if ref_val.get('Ref', '').startswith('OpenClawVSwitchCidrBlock'):
+                            egress_checks['openclaw_deny'] = True
 
         for check_name, passed in egress_checks.items():
             if passed:
