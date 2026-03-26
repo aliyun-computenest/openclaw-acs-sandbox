@@ -6,7 +6,8 @@ FROM alibaba-cloud-linux-3-registry.cn-hangzhou.cr.aliyuncs.com/alinux3/python:3
 WORKDIR /app
 
 COPY entrypoint.py /app/.internal/entrypoint.py
-COPY testopenclaw.py /app/testopenclaw.py
+COPY test_openclaw.py /app/test_openclaw.py
+COPY create_openclaw.py /app/create_openclaw.py
 COPY openclaw_template.json /app/openclaw_template.json
 
 RUN pip3 install --no-cache-dir python-dotenv requests e2b-code-interpreter e2b-desktop && \
