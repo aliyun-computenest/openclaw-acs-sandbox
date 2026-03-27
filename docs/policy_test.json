@@ -55,7 +55,8 @@
                 "cs:UnInstallClusterAddons",
                 "cs:UntagResources",
                 "cs:UpdateControlPlaneLog",
-                "cs:UpgradeCluster"
+                "cs:UpgradeCluster",
+                "acc:DescribeCommodityStatus"
             ],
             "Effect": "Allow",
             "Resource": "*"
