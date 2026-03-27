@@ -2,7 +2,8 @@
     "Statement": [
         {
             "Action": [
-                "acc:DescribeZones"
+                "acc:DescribeZones",
+                "acc:DescribeCommodityStatus"
             ],
             "Effect": "Allow",
             "Resource": "*"
