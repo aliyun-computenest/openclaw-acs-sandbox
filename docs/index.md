@@ -236,15 +236,16 @@ spec:
 1. 点击计算巢服务实例，找到实例内包含的acs的集群。![img_8.png](img_8.png)
 2. 点击集群容器组界面，找到acs-test-pod，点击终端登录![img_9.png](img_9.png)
 3. 测试创建OpenClaw 沙箱
-   a. 配置以下环境变量，为OpenClaw配置GATEWAY_TOKEN 以及访问百炼的API_KEY,若不执行此步骤，将会使用默认值
+
+a. 配置以下环境变量，为OpenClaw配置GATEWAY_TOKEN 以及访问百炼的API_KEY,若不执行此步骤，将会使用默认值
       GATEWAY_TOKEN的默认值为：clawdbot-mode-123456
       DASHSCOPE_API_KEY的默认值为：sk-****
    ```bash
      export GATEWAY_TOKEN=****
      export DASHSCOPE_API_KEY=****    
    ```
-   b. 执行 `python create_openclaw.py`
-   c. 等待脚本完成，得到SandboxId，服务就绪后说明OpenClaw 启动成功，可以访问对应沙箱的OpenClaw Web UI，参考[访问 OpenClaw Web UI](#访问-OpenClaw-Web-UI)
+b. 执行 `python create_openclaw.py`
+c. 等待脚本完成，得到SandboxId，服务就绪后说明OpenClaw 启动成功，可以访问对应沙箱的OpenClaw Web UI，参考[访问 OpenClaw Web UI](#访问-OpenClaw-Web-UI)
 4. 测试创建、休眠、唤醒Openclaw 沙箱
     - 执行 `python test_openclaw.py`
     - 等待脚本验证所有功能通过
