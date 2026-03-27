@@ -567,6 +567,51 @@ class OpenClawTestCLI:
         self._ok(f"EIP {eip_addr} 已绑定到 API Server")
         return True
 
+    def _find_matching_cert(self) -> Optional[str]:
+        """根据集群实际证书 CN 匹配本地证书目录。
+
+        流程:
+        1. 从集群 sandbox-manager-tls Secret 提取证书 CN
+        2. 根据 CN 匹配本地证书目录（CN → 目录名映射）
+        3. 返回匹配的 fullchain.pem 路径
+        """
+        # CN → 本地证书目录的映射
+        cn_to_dir = {
+            "agent-vpc.infra": "agent-vpc.infra",
+            "codog.xyz": "codog-ca",
+            "computenest": "computenest",
+        }
+
+        # 1. 从集群 Secret 提取证书 CN
+        rc, out, _ = self.run_cmd(
+            "kubectl get secret sandbox-manager-tls -n sandbox-system "
+            "-o jsonpath='{.data.tls\\.crt}' | base64 -d | "
+            "openssl x509 -noout -subject 2>/dev/null | "
+            "sed -n 's/.*CN=\\([^,/]*\\).*/\\1/p'"
+        )
+        cluster_cn = out.strip().strip("'") if rc == 0 else ""
+
+        if cluster_cn:
+            self._info(f"集群证书 CN: {cluster_cn}")
+            # 查找匹配的目录
+            cert_dir = cn_to_dir.get(cluster_cn)
+            if cert_dir:
+                cert_path = os.path.join(PROJECT_ROOT, cert_dir, "fullchain.pem")
+                if os.path.exists(cert_path):
+                    return cert_path
+                else:
+                    self._warn(f"证书目录 {cert_dir}/ 不存在 fullchain.pem")
+
+        # 2. 回退：按优先级搜索（agent-vpc.infra 优先，因为是默认部署配置）
+        self._info("未能匹配 CN，使用默认搜索顺序")
+        for cert_dir in ["agent-vpc.infra", "computenest", "codog-ca"]:
+            candidate = os.path.join(PROJECT_ROOT, cert_dir, "fullchain.pem")
+            if os.path.exists(candidate):
+                return candidate
+
+        self._warn("未找到任何可用的证书文件")
+        return None
+
     # ──────────── Phase 2: Disable Cloud Firewall & Fix ALB SG ────────────
 
     def phase2_public_protection(self) -> PhaseResult:
@@ -787,20 +832,8 @@ class OpenClawTestCLI:
 
         self._ok(f"TestPod 状态: {pod_status}")
 
-        # Copy correct CA cert — 按优先级搜索多个证书目录
-        # 优先使用参数文件中指定的 TLSCertFile 路径
-        cert_path = None
-        tls_cert_file = self.stack_params.get("TLSCertFile", "")
-        if tls_cert_file:
-            candidate = os.path.join(PROJECT_ROOT, tls_cert_file)
-            if os.path.exists(candidate):
-                cert_path = candidate
-        if not cert_path:
-            for cert_dir in ["codog-ca", "computenest", "agent-vpc.infra"]:
-                candidate = os.path.join(PROJECT_ROOT, cert_dir, "fullchain.pem")
-                if os.path.exists(candidate):
-                    cert_path = candidate
-                    break
+        # Copy correct CA cert — 根据集群实际证书 CN 匹配本地证书目录
+        cert_path = self._find_matching_cert()
         if cert_path:
             rc, _, _ = self.run_cmd(
                 f"kubectl cp {cert_path} {sandbox_ns}/acs-sandbox-test-pod:/app/ca-fullchain.pem"

@@ -42,6 +42,10 @@ Conditions:
           Fn::Equals:
             - true
             - Ref: NeedNewZoneForExistingVpc
+  EnableCmsObservabilityCondition:
+    Fn::Equals:
+      - true
+      - Ref: EnableCmsObservability
   EnablePublicIpConditions:
     Fn::Equals:
       - true
@@ -283,21 +287,6 @@ Parameters:
       zh-cn: 选择已有/新建的专有网络
     Required: true
     Default: NewVPC
-  ClusterOption:
-    Type: String
-    AllowedValues:
-      - NewAcs
-    AssociationPropertyMetadata:
-      Visible: false
-      ValueLabelMapping:
-        NewAcs:
-          zh-cn: 新建ACS集群
-          en: New ACS
-    Label:
-      en: Select cluster type
-      zh-cn: 选择集群类型
-    Required: true
-    Default: NewAcs
   VpcId:
     Type: String
     Label:
@@ -537,22 +526,6 @@ Parameters:
           Fn::Equals:
             - ExistingVPC
             - ${VpcOption}
-  OpenClawSecondaryCidrBlock:
-    Type: String
-    Label:
-      en: OpenClaw Secondary CIDR Block
-      zh-cn: OpenClaw 附加 VPC 网段
-    Description:
-      zh-cn: 新建 VPC 时需要为 OpenClaw 隔离网段添加附加 CIDR。此网段必须包含下方 3 个 OpenClaw 交换机网段。
-      en: Secondary CIDR block for OpenClaw isolated subnets when creating a new VPC. Must contain all 3 OpenClaw VSwitch CIDRs below.
-    Default: 10.8.0.0/16
-    Required: true
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - NewVPC
-            - ${VpcOption}
   OpenClawVSwitchCidrBlock1:
     Type: String
     Label:
@@ -711,22 +684,11 @@ Parameters:
     Label: Worker节点系统盘大小(GB)
     Type: Number
     MinValue: 1
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - NewAck
-            - ${ClusterOption}
   WorkerSystemDiskCategory:
     Type: String
     AssociationPropertyMetadata:
       LocaleKey: DiskCategory
       InstanceType: ${InstanceType}
-      Visible:
-        Condition:
-          Fn::Equals:
-            - NewAck
-            - ${ClusterOption}
     Default: cloud_essd
     AllowedValues:
       - cloud_efficiency
@@ -747,12 +709,6 @@ Parameters:
       en: Length 8-30, must contain three(Capital letters, lowercase letters, numbers, special symbols)
       zh-cn: 长度8-30，必须包含三项（大写字母、小写字母、数字、特殊符号）
     AssociationProperty: ALIYUN::ECS::Instance::Password
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - NewAck
-            - ${ClusterOption}
   WorkerInstanceCount:
     Default: 3
     Type: Number
@@ -761,85 +717,6 @@ Parameters:
       en: The count for cpu instance.
     MinValue: 3
     MaxValue: 5000
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::And:
-            - Fn::Equals:
-                - ${AutoScalingOption}
-                - false
-            - Fn::Equals:
-                - NewAck
-                - ${ClusterOption}
-  WorkerInstanceMinCount:
-    Default: 3
-    Type: Number
-    Label:
-      zh-cn: 最小实例节点数
-      en: The min count for cpu instance.
-    MinValue: 3
-    MaxValue: 5000
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::And:
-            - Fn::Equals:
-                - ${AutoScalingOption}
-                - true
-            - Fn::Equals:
-                - NewAck
-                - ${ClusterOption}
-  WorkerInstanceMaxCount:
-    Default: 10
-    Type: Number
-    Label:
-      zh-cn: 最大实例节点数
-      en: The max count for cpu instance.
-    Description:
-      en: If you want to enable automatic elastic scaling, the number of nodes must be greater than the minimum.
-      zh-cn: 若需要启用自动弹性伸缩，需要大于最小节点数。
-    MinValue: 3
-    MaxValue: 5000
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::And:
-            - Fn::Equals:
-                - ${AutoScalingOption}
-                - true
-            - Fn::Equals:
-                - NewAck
-                - ${ClusterOption}
-  AutoScalingOption:
-    Type: Boolean
-    Label:
-      en: Whether to enable automatic elastic scaling of a node pool.
-      zh-cn: 节点池是否启用自动弹性伸缩
-    Description:
-      zh-cn: 节点池若开启自动弹性伸缩，付费方式只能选择按量付费
-      en: If automatic elastic expansion is enabled for a node pool, the payment mode can only be Postpaid
-    Default: false
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - NewAck
-            - ${ClusterOption}
-  AckNetworkPlugin:
-    Type: String
-    Label:
-      en: ACK plugin network
-      zh-cn: ACK 网络插件
-    AllowedValues:
-      - terway
-      - flannel
-    Default: terway
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - NewAck
-            - ${ClusterOption}
   E2BDomainAddress:
     Type: String
     Label:
@@ -997,6 +874,77 @@ Parameters:
       en: Whether to enable the public ip.
       zh-cn: 是否支持公网访问
     Default: false
+  # ==================== CMS 可观测性配置 ====================
+  EnableCmsObservability:
+    Type: Boolean
+    Label:
+      en: Enable CMS Observability
+      zh-cn: 启用云监控可观测性
+    Description:
+      zh-cn: 启用后将通过无侵入方式接入阿里云云监控2.0（ARMS），自动采集 OpenClaw 的 Trace、Metrics 等可观测数据。需要提前在云监控2.0控制台创建工作空间。
+      en: When enabled, OpenClaw will be instrumented with Alibaba Cloud CMS 2.0 (ARMS) for automatic trace and metrics collection. Requires a pre-created CMS 2.0 workspace.
+    Default: false
+  CmsArmsLicenseKey:
+    Type: String
+    Label:
+      en: ARMS License Key
+      zh-cn: ARMS 鉴权 License Key
+    Description:
+      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 authToken 字段。可在云监控2.0控制台的接入中心获取。
+      en: Obtained from CMS 2.0 GetServiceObservability API, the authToken field in entryPointInfo.
+    Default: ''
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
+  CmsArmsProject:
+    Type: String
+    Label:
+      en: ARMS Project
+      zh-cn: ARMS 项目名
+    Description:
+      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 project 字段。CMS 上报端点将根据此项目名自动推算。
+      en: Obtained from CMS 2.0 GetServiceObservability API, the project field in entryPointInfo. CMS endpoint will be auto-derived from this project name.
+    Default: ''
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
+  CmsWorkspaceName:
+    Type: String
+    Label:
+      en: CMS Workspace Name
+      zh-cn: 云监控工作空间名称
+    Description:
+      zh-cn: 云监控2.0工作空间名称。如不填写，将使用默认工作空间 default-cms-${主账号UID}-${RegionId}。可在云监控2.0控制台查看。
+      en: CMS 2.0 workspace name. If empty, defaults to default-cms-${AccountUID}-${RegionId}.
+    Default: ''
+    AssociationProperty: ALIYUN::CMS::Workspace
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
+  CmsServiceName:
+    Type: String
+    Label:
+      en: CMS Service Name
+      zh-cn: 应用监控服务名
+    Description:
+      zh-cn: 上报到云监控2.0应用监控的服务名称，用户可自定义。
+      en: Service name reported to CMS 2.0 application monitoring, user-defined.
+    Default: openclaw
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
 Resources:
   Vpc:
     Type: ALIYUN::ECS::VPC
@@ -1006,7 +954,7 @@ Resources:
         Ref: VpcCidrBlock
       VpcName:
         Fn::Sub: openclaw-prod-vpc-${ALIYUN::StackName}
-  VpcSecondaryCidr:
+  VpcSecondaryCidr1:
     Type: ALIYUN::VPC::VpcCidrBlockAssociation
     Condition: CreateNewVpcCondition
     Properties:
@@ -1015,7 +963,27 @@ Resources:
           - Vpc
           - VpcId
       SecondaryCidrBlock:
-        Ref: OpenClawSecondaryCidrBlock
+        Ref: OpenClawVSwitchCidrBlock1
+  VpcSecondaryCidr2:
+    Type: ALIYUN::VPC::VpcCidrBlockAssociation
+    Condition: CreateNewVpcCondition
+    Properties:
+      VpcId:
+        Fn::GetAtt:
+          - Vpc
+          - VpcId
+      SecondaryCidrBlock:
+        Ref: OpenClawVSwitchCidrBlock2
+  VpcSecondaryCidr3:
+    Type: ALIYUN::VPC::VpcCidrBlockAssociation
+    Condition: CreateNewVpcCondition
+    Properties:
+      VpcId:
+        Fn::GetAtt:
+          - Vpc
+          - VpcId
+      SecondaryCidrBlock:
+        Ref: OpenClawVSwitchCidrBlock3
   BusinessVSwitch1:
     Type: ALIYUN::ECS::VSwitch
     Condition: CreateNewVpcCondition
@@ -1061,7 +1029,7 @@ Resources:
   OpenClawVSwitch1:
     Type: ALIYUN::ECS::VSwitch
     Condition: CreateNewVpcCondition
-    DependsOn: VpcSecondaryCidr
+    DependsOn: VpcSecondaryCidr1
     Properties:
       ZoneId:
         Ref: ZoneId1
@@ -1076,7 +1044,7 @@ Resources:
   OpenClawVSwitch2:
     Type: ALIYUN::ECS::VSwitch
     Condition: CreateNewVpcCondition
-    DependsOn: VpcSecondaryCidr
+    DependsOn: VpcSecondaryCidr2
     Properties:
       ZoneId:
         Ref: ZoneId2
@@ -1091,7 +1059,7 @@ Resources:
   OpenClawVSwitch3:
     Type: ALIYUN::ECS::VSwitch
     Condition: CreateNewVpcCondition
-    DependsOn: VpcSecondaryCidr
+    DependsOn: VpcSecondaryCidr3
     Properties:
       ZoneId:
         Ref: ZoneId3
@@ -2280,10 +2248,13 @@ Resources:
                   - action: allow
                     to:
                       - cidr: 100.64.0.0/10
-                  # 5. 允许访问 VPC 主网段（Poseidon 管控面 9082、API Server 6443）
+                  # 5. 允许访问业务 VSwitch 网段（Poseidon 管控面 9082、API Server 6443）
+                  #    仅放行业务网段，不放行 OpenClaw 隔离网段，确保 sandbox 间网络隔离
                   - action: allow
                     to:
-                      - cidr: ${VpcCidr}
+                      - cidr: ${VSwitchCidr1}
+                      - cidr: ${VSwitchCidr2}
+                      - cidr: ${VSwitchCidr3}
                   # 6. 拒绝所有其他内网访问（Pod 间隔离核心规则）
                   - action: deny
                     to:
@@ -2296,8 +2267,36 @@ Resources:
                       - cidr: 0.0.0.0/0
           - SandboxNamespace:
               Ref: SandboxNamespace
-            VpcCidr:
-              Ref: VpcCidrBlock
+            VSwitchCidr1:
+              Fn::If:
+                - CreateNewVpcCondition
+                - Ref: VSwitchCidrBlock1
+                - Fn::Jq:
+                    - First
+                    - .[0].CidrBlock
+                    - Fn::GetAtt:
+                        - BusinessVSwitch1DataSource
+                        - VSwitches
+            VSwitchCidr2:
+              Fn::If:
+                - CreateNewVpcCondition
+                - Ref: VSwitchCidrBlock2
+                - Fn::Jq:
+                    - First
+                    - .[0].CidrBlock
+                    - Fn::GetAtt:
+                        - BusinessVSwitch2DataSource
+                        - VSwitches
+            VSwitchCidr3:
+              Fn::If:
+                - CreateNewVpcCondition
+                - Ref: VSwitchCidrBlock3
+                - Fn::Jq:
+                    - First
+                    - .[0].CidrBlock
+                    - Fn::GetAtt:
+                        - BusinessVSwitch3DataSource
+                        - VSwitches
   OpenClawPodNetworking:
     Type: ALIYUN::CS::ClusterApplication
     DependsOn:
@@ -2449,8 +2448,7 @@ Resources:
                       args:
                         - bash
                         - -c
-                        - |
-                          exec node openclaw.mjs gateway run --allow-unconfigured
+                        - "echo ${CmsGatewayStartScriptB64} | base64 -d | bash"
                       ports:
                         - name: gateway
                           containerPort: 18789
@@ -2538,9 +2536,37 @@ Resources:
               Ref: OpenClawImage
             InitImage:
               Fn::Sub:
-                - registry-${RegionId}-vpc.ack.aliyuncs.com/acs/agent-runtime:v0.0.2
+                - registry-${RegionId}-vpc.ack.aliyuncs.com/acs/agent-runtime:v0.0.4
                 - RegionId:
                     Ref: ALIYUN::Region
+            CmsGatewayStartScriptB64:
+              Fn::Base64Encode:
+                Fn::If:
+                  - EnableCmsObservabilityCondition
+                  - Fn::Sub:
+                      - |
+                        set -eu
+                        # CMS 安装脚本（安装 openclaw-cms-plugin，自动写入 openclaw.json 配置）
+                        wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint "${Endpoint}" --x-arms-license-key "${LicenseKey}" --x-arms-project "${ArmsProject}" --x-cms-workspace "${WorkspaceName}" --serviceName "${ServiceName}" || true
+                        echo "=== Starting Gateway ==="
+                        exec node openclaw.mjs gateway run --allow-unconfigured
+                      - LicenseKey:
+                          Ref: CmsArmsLicenseKey
+                        ArmsProject:
+                          Ref: CmsArmsProject
+                        WorkspaceName:
+                          Ref: CmsWorkspaceName
+                        ServiceName:
+                          Ref: CmsServiceName
+                        Endpoint:
+                          Fn::Sub:
+                            - 'https://${CmsArmsProject}.${RegionId}.log.aliyuncs.com/apm/trace/opentelemetry'
+                            - RegionId:
+                                Ref: ALIYUN::Region
+                              CmsArmsProject:
+                                Ref: CmsArmsProject
+                  - |
+                    exec node openclaw.mjs gateway run --allow-unconfigured
       WaitUntil:
         - Kind: SandboxSet
           ApiVersion: agents.kruise.io/v1alpha1
@@ -2912,7 +2938,6 @@ Outputs:
 Metadata:
   ALIYUN::ROS::Interface:
     Hidden:
-      - ClusterOption
       - OpenClawImage
       - OpenClawReplicas
     ParameterGroups:
@@ -2945,7 +2970,6 @@ Metadata:
           - OpenClawVSwitchId1
           - OpenClawVSwitchId2
           - OpenClawVSwitchId3
-          - OpenClawSecondaryCidrBlock
           - OpenClawVSwitchCidrBlock1
           - OpenClawVSwitchCidrBlock2
           - OpenClawVSwitchCidrBlock3
@@ -2960,16 +2984,11 @@ Metadata:
           en: ALB VSwitch Configuration
           zh-cn: ALB 交换机配置
       - Parameters:
-          - ClusterOption
           - InstanceType
           - WorkerSystemDiskCategory
           - WorkerSystemDiskSize
           - InstancePassword
-          - AutoScalingOption
           - WorkerInstanceCount
-          - WorkerInstanceMinCount
-          - WorkerInstanceMaxCount
-          - AckNetworkPlugin
           - ServiceCidr
         Label:
           en: Cluster Configuration
@@ -2992,3 +3011,12 @@ Metadata:
         Label:
           en: OpenClaw Configuration
           zh-cn: OpenClaw 默认配置
+      - Parameters:
+          - EnableCmsObservability
+          - CmsWorkspaceName
+          - CmsArmsLicenseKey
+          - CmsArmsProject
+          - CmsServiceName
+        Label:
+          en: CMS Observability
+          zh-cn: 云监控可观测性配置

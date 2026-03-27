@@ -45,6 +45,10 @@ Conditions:
           Fn::Equals:
             - true
             - Ref: NeedNewZoneForExistingVpc
+  EnableCmsObservabilityCondition:
+    Fn::Equals:
+      - true
+      - Ref: EnableCmsObservability
   EnablePublicIpConditions:
     Fn::Equals:
       - true
@@ -524,11 +528,11 @@ Parameters:
         Condition:
           Fn::And:
             - Fn::Equals:
-                - ${AutoScalingOption}
-                - false
+              - ${AutoScalingOption}
+              - false
             - Fn::Equals:
-                - NewAck
-                - ${ClusterOption}
+              - NewAck
+              - ${ClusterOption}
   WorkerInstanceMinCount:
     Default: 3
     Type: Number
@@ -542,11 +546,11 @@ Parameters:
         Condition:
           Fn::And:
             - Fn::Equals:
-                - ${AutoScalingOption}
-                - true
+              - ${AutoScalingOption}
+              - true
             - Fn::Equals:
-                - NewAck
-                - ${ClusterOption}
+              - NewAck
+              - ${ClusterOption}
   WorkerInstanceMaxCount:
     Default: 10
     Type: Number
@@ -563,11 +567,11 @@ Parameters:
         Condition:
           Fn::And:
             - Fn::Equals:
-                - ${AutoScalingOption}
-                - true
+              - ${AutoScalingOption}
+              - true
             - Fn::Equals:
-                - NewAck
-                - ${ClusterOption}
+              - NewAck
+              - ${ClusterOption}
   AutoScalingOption:
     Type: Boolean
     Label:
@@ -709,7 +713,7 @@ Parameters:
                 - cn-hongkong
                 - ap-northeast-1
               - ${RegionId}
-          Value: registry-${RegionId}.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
+          Value: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2
         # 其他地域 - 使用杭州公网镜像仓库
         - Condition:
             Fn::Not:
@@ -722,7 +726,7 @@ Parameters:
                   - cn-hongkong
                   - ap-northeast-1
                 - ${RegionId}
-          Value: registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
+          Value: registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2
   EnablePublicIp:
     Type: Boolean
     Description:
@@ -732,6 +736,78 @@ Parameters:
       en: Whether to enable the public ip.
       zh-cn: 是否支持公网访问
     Default: false
+  # ==================== CMS 可观测性配置 ====================
+  EnableCmsObservability:
+    Type: Boolean
+    Label:
+      en: Enable CMS Observability
+      zh-cn: 启用云监控可观测性
+    Description:
+      zh-cn: 启用后将通过无侵入方式接入阿里云云监控2.0（ARMS），自动采集 OpenClaw 的 Trace、Metrics 等可观测数据。需要提前在云监控2.0控制台创建工作空间。
+      en: When enabled, OpenClaw will be instrumented with Alibaba Cloud CMS 2.0 (ARMS) for automatic trace and metrics collection. Requires a pre-created CMS 2.0 workspace.
+    Default: false
+  CmsArmsLicenseKey:
+    Type: String
+    Label:
+      en: ARMS License Key
+      zh-cn: ARMS 鉴权 License Key
+    Description:
+      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 authToken 字段。可在云监控2.0控制台的接入中心获取。
+      en: Obtained from CMS 2.0 GetServiceObservability API, the authToken field in entryPointInfo.
+    Default: ''
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
+  CmsArmsProject:
+    Type: String
+    Label:
+      en: ARMS Project
+      zh-cn: ARMS 项目名
+    Description:
+      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 project 字段。CMS 上报端点将根据此项目名自动推算。
+      en: Obtained from CMS 2.0 GetServiceObservability API, the project field in entryPointInfo. CMS endpoint will be auto-derived from this project name.
+    Default: ''
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
+  CmsWorkspaceName:
+    Type: String
+    Label:
+      en: CMS Workspace Name
+      zh-cn: 云监控工作空间名称
+    Description:
+      zh-cn: 云监控2.0工作空间名称。如不填写，将使用默认工作空间 default-cms-${主账号UID}-${RegionId}。可在云监控2.0控制台查看。
+      en: CMS 2.0 workspace name. If empty, defaults to default-cms-${AccountUID}-${RegionId}.
+    Default: ''
+    AssociationProperty: ALIYUN::CMS::Workspace
+
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
+  CmsServiceName:
+    Type: String
+    Label:
+      en: CMS Service Name
+      zh-cn: 应用监控服务名
+    Description:
+      zh-cn: 上报到云监控2.0应用监控的服务名称，用户可自定义。
+      en: Service name reported to CMS 2.0 application monitoring, user-defined.
+    Default: openclaw
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
 
 Resources:
   VpcModule:
@@ -1005,6 +1081,8 @@ Resources:
             metadata:
               name: openclaw
               namespace: default
+              labels:
+                app: openclaw
             spec:
               persistentContents:
                 - filesystem
@@ -1016,6 +1094,9 @@ Resources:
                     app: openclaw
                   annotations:
                     ops.alibabacloud.com/pause-enabled: "true"
+                    k8s.aliyun.com/eci-network-policy-enable: "true"
+                    network.alibabacloud.com/enable-network-policy-agent: "true"
+                    network.alibabacloud.com/network-policy-mode: "traffic-policy"
                 spec:
                   automountServiceAccountToken: false
                   enableServiceLinks: false
@@ -1024,6 +1105,18 @@ Resources:
                   hostIPC: false
                   shareProcessNamespace: false
                   hostname: openclaw
+                  dnsPolicy: None
+                  dnsConfig:
+                    nameservers:
+                      - "100.100.2.136"
+                      - "100.100.2.138"
+                    searches:
+                      - default.svc.cluster.local
+                      - svc.cluster.local
+                      - cluster.local
+                    options:
+                      - name: ndots
+                        value: "5"
                   initContainers:
                     - name: tini-copy
                       image: kube-ai-registry.cn-shanghai.cr.aliyuncs.com/kube-ai/ubuntu-tini:krallin-ubuntu-tini-latest
@@ -1058,8 +1151,7 @@ Resources:
                       args:
                         - bash
                         - -c
-                        - |
-                          exec node openclaw.mjs gateway run --allow-unconfigured
+                        - "echo ${CmsGatewayStartScriptB64} | base64 -d | bash"
                       ports:
                         - name: gateway
                           containerPort: 18789
@@ -1112,9 +1204,9 @@ Resources:
                             - node
                             - -e
                             - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
-                        initialDelaySeconds: 60
-                        periodSeconds: 30
-                        failureThreshold: 30
+                        initialDelaySeconds: 5
+                        periodSeconds: 5
+                        failureThreshold: 60
                       # livenessProbe:
                       #   exec:
                       #     command:
@@ -1143,9 +1235,36 @@ Resources:
               Ref: OpenClawReplicas
             OpenClawImage:
               Ref: OpenClawImage
+            CmsGatewayStartScriptB64:
+              Fn::Base64Encode:
+                Fn::If:
+                  - EnableCmsObservabilityCondition
+                  - Fn::Sub:
+                      - |-
+                        set -eu
+                        # CMS 安装脚本（安装 openclaw-cms-plugin，自动写入 openclaw.json 配置）
+                        wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint "${Endpoint}" --x-arms-license-key "${LicenseKey}" --x-arms-project "${ArmsProject}" --x-cms-workspace "${WorkspaceName}" --serviceName "${ServiceName}" || true
+                        echo "=== Starting Gateway ==="
+                        exec node openclaw.mjs gateway run --allow-unconfigured
+                      - LicenseKey:
+                          Ref: CmsArmsLicenseKey
+                        ArmsProject:
+                          Ref: CmsArmsProject
+                        WorkspaceName:
+                          Ref: CmsWorkspaceName
+                        ServiceName:
+                          Ref: CmsServiceName
+                        Endpoint:
+                          Fn::Sub:
+                            - 'https://${CmsArmsProject}.${RegionId}.log.aliyuncs.com/apm/trace/opentelemetry'
+                            - RegionId:
+                                Ref: ALIYUN::Region
+                              CmsArmsProject:
+                                Ref: CmsArmsProject
+                  - 'exec node openclaw.mjs gateway run --allow-unconfigured'
             InitImage:
               Fn::Sub:
-                - registry-${RegionId}.ack.aliyuncs.com/acs/agent-runtime:v0.0.2
+                - registry-${RegionId}-vpc.ack.aliyuncs.com/acs/agent-runtime:v0.0.4
                 - RegionId:
                     Ref: ALIYUN::Region
 
@@ -1622,4 +1741,13 @@ Metadata:
         Label:
           en: Sandbox Configuration
           zh-cn: Sandbox 配置
+      - Parameters:
+          - EnableCmsObservability
+          - CmsWorkspaceName
+          - CmsArmsLicenseKey
+          - CmsArmsProject
+          - CmsServiceName
+        Label:
+          en: CMS Observability
+          zh-cn: 云监控可观测性配置
 
