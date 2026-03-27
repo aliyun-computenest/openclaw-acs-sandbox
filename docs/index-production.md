@@ -79,6 +79,13 @@
 1. 拥有阿里云账号，并已完成实名认证
 2. 准备 TLS 证书文件（`fullchain.pem` 和 `privkey.pem`），用于 E2B API 的 HTTPS 访问
 3. （可选）准备百炼 API Key，用于 OpenClaw 的 AI 能力
+4. 给RAM 用户授权：
+   如果您使用的是RAM用户，需要授权RAM用户相关权限，才能够完成部署流程，参考[授权文档](https://help.aliyun.com/zh/compute-nest/security-and-compliance/grant-user-permissions-to-a-ram-user)
+   部署此服务需要的权限策略包括两个系统权限策略和一个自定义权限策略, 请联系有管理员权限的用户对RAM用户授予以下权限：
+   **系统权限策略：**
+   - AliyunComputeNestUserFullAccess：管理计算巢服务（ComputeNest）的用户侧权限，
+   - AliyunROSFullAccess：管理资源编排服务（ROS）的权限。
+   **自定义权限策略：**：[policy_prod.json](https://github.com/aliyun-computenest/openclaw-acs-sandbox/blob/main/docs/policy_prod.json)
 
 ## 部署步骤
 
@@ -191,18 +198,21 @@
 
 部署完成后，在计算巢控制台的 **服务实例** 页面可以看到实例状态变为 **已部署**。
 
-
-### 自动化测试
-
-1. 在服务实例详情页找到 ACK 集群
-2. 进入集群的容器组界面，找到 `acs-sandbox-test-pod`
-3. 点击终端登录
-4. 执行测试脚本：
-
-```bash
-python testopenclaw.py
-```
-
+##  自动化测试 (无需配置本地环境和域名解析，可用于快速验证)
+1. 点击计算巢服务实例，找到实例内包含的acs的集群。![img_8.png](img_8.png)
+2. 点击集群容器组界面，找到acs-test-pod，点击终端登录![img_9.png](img_9.png)
+3. 测试创建OpenClaw 沙箱
+    - 配置以下环境变量，为OpenClaw配置GATEWAY_TOKEN 以及访问百炼的API_KEY,若不执行此步骤，将会使用默认值
+      GATEWAY_TOKEN的默认值为：clawdbot-mode-123456
+      DASHSCOPE_API_KEY的默认值为：sk-****
+   ```bash
+     export GATEWAY_TOKEN=****
+     export DASHSCOPE_API_KEY=****    
+   ```
+    - 执行 `python create_openclaw.py`
+    - 等待脚本完成，得到SandboxId，服务就绪后说明OpenClaw 启动成功，可以访问对应沙箱的OpenClaw Web UI，参考[访问 OpenClaw Web UI](#访问-OpenClaw-Web-UI)
+4. 测试创建、休眠、唤醒Openclaw 沙箱
+    - 执行 `python test_openclaw.py`
 5. 等待脚本验证所有功能通过，日志中出现 **"创建 sandbox 耗时"** 即代表验证通过
 
 ## SandboxSet 配置
@@ -398,124 +408,97 @@ sudo vim /etc/hosts
 2. 在 DNS 服务商处，将 ALB 端点以 **CNAME** 记录解析到对应域名
 3. 如需内网访问，可通过 PrivateZone 添加内网域名解析
 
-## 使用 E2B SDK 创建沙箱
-
-### 通过 API 创建
-
-```bash
-curl --cacert fullchain.pem -X POST --location "https://api.<e2b-domain>/sandboxes" \
-    -H "Content-Type: application/json" \
-    -H "X-API-Key: <admin-api-key>" \
-    -d '{
-          "templateID": "openclaw",
-          "timeout": 300
-        }'
-```
-
-返回结果中存在 `sandboxID` 且 `state: "running"` 即表示创建成功。
-
-### 通过集群内 TestPod 创建（快速验证）
-
-部署完成后，集群内会自动创建 `acs-sandbox-test-pod`，可以直接通过它调用 sandbox-manager 内部接口 claim 一个沙箱：
-
-```bash
-# ⚠️ 重要：必须将下面的 API Key 替换为实际值！
-# API Key 可在计算巢服务实例详情页的 E2B_API_KEY 字段找到
-kubectl exec -n default acs-sandbox-test-pod -- curl -s -X POST \
-  "http://sandbox-manager.sandbox-system:8080/sandboxes" \
-  -H "X-API-Key: 你的实际API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"templateID":"openclaw","timeout":1800}'
-```
-
-> ⚠️ **常见错误**：如果返回 `sandboxID: None, state: None`，说明 API Key 未正确替换。请确保将命令中的占位符替换为计算巢服务实例详情页显示的实际 `E2B_API_KEY` 值。
-
-返回示例：
-```json
-{
-  "sandboxID": "openclaw-abc12",
-  "clientID": "...",
-  "templateID": "openclaw",
-  "state": "running"
-}
-```
-
-> ⚠️ **重要**：必须通过 E2B API（`POST /sandboxes`）正式 claim 沙箱，sandbox-manager 内部路由状态才会从 `available` 变为 `running`。手动 patch K8s label 不会改变内部路由状态，直接访问未 claim 的沙箱会返回 502 错误。
-
-**Claim 后访问 Web UI 的一键脚本**：
-
-```bash
-# 1. Claim sandbox
-RESULT=$(kubectl exec -n default acs-sandbox-test-pod -- curl -s -X POST \
-  "http://sandbox-manager.sandbox-system:8080/sandboxes" \
-  -H "X-API-Key: <admin-api-key>" \
-  -H "Content-Type: application/json" \
-  -d '{"templateID":"openclaw","timeout":1800}')
-echo "Claim 结果: $RESULT"
-
-# 2. 提取 sandboxID
-SANDBOX_ID=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['sandboxID'])")
-echo "Sandbox ID: $SANDBOX_ID"
-
-# 3. 获取 ALB IP
-ALB_IP=$(kubectl get ingress -n sandbox-system sandbox-manager -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-echo "ALB IP: $ALB_IP"
-
-# 4. 添加 hosts 记录
-DOMAIN="18789-default--${SANDBOX_ID}.<e2b-domain>"
-sudo sh -c "echo '${ALB_IP} ${DOMAIN}' >> /etc/hosts"
-echo "已添加 hosts: ${ALB_IP} ${DOMAIN}"
-
-# 5. 浏览器访问
-echo "访问地址: https://${DOMAIN}?token=<gateway-token>"
-```
-
-> 将 `<e2b-domain>` 替换为部署时配置的 E2B 域名（如 `agent-vpc.infra`），`<gateway-token>` 替换为 SandboxSet 中配置的 `GATEWAY_TOKEN` 值。
+## 使用沙箱Demo
 
 ### 通过 Python SDK 创建
 
+1. 安装 E2B Python SDK
+
+```bash
+pip install e2b-code-interpreter
+```
+
+2. 初始化客户端运行环境配置
+
+```bash
+export E2B_DOMAIN=your.domain
+export E2B_API_KEY=your-token
+# 如果使用了自签名证书，还需要配置可信CA证书
+export SSL_CERT_FILE=/path/to/ca-fullchain.pem
+```
+
+#### 创建沙箱并配置用户信息
+
+为用户配置的OpenClaw的GATEWAY_TOKEN 以及访问百炼的API_KEY,
+   ```bash
+     export GATEWAY_TOKEN=****
+     export DASHSCOPE_API_KEY=****    
+   ```
+为用户申请 Sandbox，并在 Sandbox 中配置个人信息。以下代码会读取 [openclaw_template.json]() 配置模板，注入用户独立的 token 和 LLM 鉴权信息。
+
+```python
+   # Import and patch the E2B SDK
+    import os
+    import requests
+    from string import Template
+    from e2b_code_interpreter import Sandbox
+    
+    # 注意为用户配置 never timeout
+    sbx: Sandbox = Sandbox.create(template="openclaw-sbs", metadata={
+                                   "e2b.agents.kruise.io/never-timeout": "true"
+                                 })
+    print(f"sandbox id: {sbx.sandbox_id}")
+    
+    # 基于环境变量中的 GATEWAY_TOKEN, DASHSCOPE_API_KEY, EXTERNAL_ACCESS_DOMAIN 读取
+    GATEWAY_TOKEN = os.environ.get("GATEWAY_TOKEN", "clawdbot-mode-123456")
+    DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "sk-****")
+    
+    
+    #渲染 openclaw-template.json 文件， 并将渲染后的文件覆盖沙盒中 /root/.openclaw/openclaw.json 的内容，触发openclaw重启更新配置
+    template_path = "openclaw_template.json"
+    with open(template_path, "r") as f:
+        template_content = f.read()
+    
+    rendered_content = Template(template_content).safe_substitute(
+        GATEWAY_TOKEN=GATEWAY_TOKEN,
+        DASHSCOPE_API_KEY=DASHSCOPE_API_KEY,
+    )
+    
+    sbx.files.write("/root/.openclaw/openclaw.json", rendered_content)
+    print("已将渲染后的配置写入沙盒 /root/.openclaw/openclaw.json")
+    print(f"sandbox: {sbx}")
+    print(f"sandbox id: {sbx.sandbox_id}")
+```
+
+执行代码可以得到创建后返回的Sandbox对象，获取新创建Sandbox对象的详细信息
+
+```python
+print(f"sandbox: {sbx}")
+print(f"sandbox id: {sbx.sandbox_id}")
+> 创建后返回的 Sandbox 对象中包含新创建 Sandbox 的详细信息。sandbox id 的命名格式为 `{Namespace}--{Sandbox Name}`，其中 `--` 之前为对应资源所处的 K8s 命名空间，之后为 Sandbox 的名称。
+
+#### 休眠与唤醒
+
+当用户长时间不使用时，可以将对应 Sandbox 挂起，触发沙箱休眠。休眠期间，沙箱中文件系统等状态被冻结，ACS 不会收取 CPU、Memory 资源的费用，只会产生少量的存储成本。
+
 ```python
 from e2b_code_interpreter import Sandbox
 
-sandbox = Sandbox.create(                
-    template="openclaw",    
-    request_timeout=60,
-    metadata={
-        "e2b.agents.kruise.io/never-timeout": "true"
-    }
-)
-result = sandbox.commands.run("whoami")
-print(f"Running in sandbox as \"{result.stdout.strip()}\"")
+# 通过 sandbox ID 连接到已存在的 sandbox
+sandbox_id = "default--openclaw-52xbx"  # 替换为你的实际 sandbox ID
+# 注意根据申请时的申请信息，配置timeout时间
+sbx = Sandbox.connect(sandbox_id, timeout=2592000)
+
+# 挂起Sandbox
+sbx.beta_pause()
+
+input("press ENTER to step")
+
+# 恢复被挂起的Sandbox，注意timeout配置
+sbx.connect(timeout=2592000)
 ```
 
-### 休眠与唤醒
-
-```python
-from e2b_code_interpreter import Sandbox
-import time
-
-# 创建 sandbox
-sandbox = Sandbox.create("openclaw", timeout=1800)
-print(f"Sandbox ID: {sandbox.sandbox_id}")
-
-# 写入测试文件
-sandbox.files.write("/tmp/test.txt", "Hello, World!")
-
-# 暂停 sandbox
-pause_result = sandbox.beta_pause()
-print(f"Pause result: {pause_result}")
-
-# 等待一段时间
-time.sleep(60)
-
-# 重新连接
-same_sandbox = sandbox.connect(timeout=180)
-print(f"Reconnected: {same_sandbox.sandbox_id}")
-
-# 验证文件仍然存在
-content = same_sandbox.files.read("/tmp/test.txt")
-print(f"File content: {content}")
-```
+> 沙箱休眠成功后，沙箱的状态会变成休眠状态，对应的 Pod 也会消失。注意沙箱实例休眠期间，OpenClaw 服务将处于不可访问状态。
 
 ## 网络隔离详解
 
