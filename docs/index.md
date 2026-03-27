@@ -231,25 +231,167 @@ spec:
 
 部署完成后，会得到一个对应的ACS集群，ACS集群中在sandbox-system命名空间下有sandbox-manager的Deployment，用于管理沙箱。 通过以下流程验证E2B服务已经正常运行，并介绍沙箱使用Demo.
 该部分分为自动化测试和手动测试可选其中一种测试步骤验证核心功能，两种测试方式验证的功能一致，均包含沙箱创建，休眠和重新连接部分。
-##  自动化测试
+
+##  自动化测试 (无需配置本地环境和域名解析，可用于快速验证)
 1. 点击计算巢服务实例，找到实例内包含的acs的集群。![img_8.png](img_8.png)
 2. 点击集群容器组界面，找到acs-test-pod，点击终端登录![img_9.png](img_9.png)
-3. 执行 python testopenclaw.py
-4. 等待脚本验证所有功能通过
+3. 测试创建OpenClaw 沙箱
+    - 配置以下环境变量，为OpenClaw配置GATEWAY_TOKEN 以及访问百炼的API_KEY,若不执行此步骤，将会使用默认值
+      GATEWAY_TOKEN的默认值为：clawdbot-mode-123456
+      DASHSCOPE_API_KEY的默认值为：sk-****
+   ```bash
+     export GATEWAY_TOKEN=****
+     export DASHSCOPE_API_KEY=****    
+   ```
+    - 执行 `python create_openclaw.py`
+    - 等待脚本完成，得到SandboxId，服务就绪后说明OpenClaw 启动成功，可以访问对应沙箱的OpenClaw Web UI，参考[访问 OpenClaw Web UI](#访问-OpenClaw-Web-UI)
+4. 测试创建、休眠、唤醒Openclaw 沙箱
+    - 执行 `python test_openclaw.py`
+    - 等待脚本验证所有功能通过
+
+## 手动测试 (可选)
+
+### 配置域名的解析
+#### 本地配置Host: 用于快速验证
+
+1.  获取ALB的访问端点：ack-sandbox-manager 集群中使用Alb作为Ingress，在服务实例详情页，可以找到ACS控制台的链接，点击链接查看sandbox-manager的网关，可以获取ALB的访问端点，如下图所示 
+    
+    ![image.png](img_2.png)
+    
+2.  获取Alb端点对应的公网地址：本地通过ping ALB的访问端点得到公网Ip `ping alb-xxxxxx`
+    
+3.  将ALB的公网地址和域名配置到本地host：`echo "ALB_PUBLIC_IP api.E2B_DOMAIN" >> /etc/hosts` 示例为： `xx.xxx.xx.xxx api.agent-vpc.infra`
+    
+4.  配置完Host后，无需配置DNS解析，在本地就可以管理E2B沙箱，具体使用方式，参考“使用沙箱demo”章节。
+    
+
+#### 配置DNS解析：用于生产环境
+
+1.  获取ALB的访问端点： ack-sandbox-manager 集群中使用Alb作为Ingress，在服务实例详情页，可以到ACS控制台的链接，点击链接查看sandbox-manager的网关，可以获取ALB的访问端点，如下图所示 ![image.png](img_2.png)
+    
+2.  配置DNS解析： 请将Alb的访问端点 以 CNAME 记录类型解析到对应域名， ![image.png](img_5.png)
+    
+3.  如需通过内网访问，可以通过PrivateZone 为E2B 添加内网域名。(如果部署时选择了新建VPC, 已经为您自动配置了PrivateZone，后续只需要添加解析记录)【可选】
+
+4.  验证E2B服务是否正常运行：替换xxxx为您前面指定的域名，返回值2xx表示e2b服务已运行,如果是自行签发的证书，需要指定fullchain.pem；或通过配置环境变量使用您本地的证书 【该动作为创建sandbox的动作】e2b使用的可以请自行替换 “admin-987654321"-> 实际的key
+
+```yaml
+curl --cacert fullchain.pem -X POST --location "https://api.xxx/sandboxes" \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: admin-987654321" \
+    -d '{
+          "templateID": "openclaw",
+          "timeout": 300
+        }'
+```
+当返回结果的json中，存在 "sandboxID" 且 "state":"running"，可以认为E2B 服务已经正常运行，且在本地可以访问E2B服务
+
+5. 测试连通性之后，在本地就可以管理E2B沙箱，具体使用方式，参考“使用沙箱demo”章节。
+
+### 使用沙箱demo
+
+1. 安装 E2B Python SDK
+
+```bash
+pip install e2b-code-interpreter
+```
+
+2. 初始化客户端运行环境配置
+
+```bash
+export E2B_DOMAIN=your.domain
+export E2B_API_KEY=your-token
+# 如果使用了自签名证书，还需要配置可信CA证书
+export SSL_CERT_FILE=/path/to/ca-fullchain.pem
+```
+
+> 将 `your.domain` 替换为部署时配置的 E2B 域名，`your-token` 替换为服务实例详情页的 E2B_API_KEY。
+
+#### 创建沙箱并配置用户信息
+
+为用户配置的OpenClaw的GATEWAY_TOKEN 以及访问百炼的API_KEY,
+   ```bash
+     export GATEWAY_TOKEN=****
+     export DASHSCOPE_API_KEY=****    
+   ```
+为用户申请 Sandbox，并在 Sandbox 中配置个人信息。以下代码会读取 [openclaw_template.json]() 配置模板，注入用户独立的 token 和 LLM 鉴权信息。
+
+```python
+   # Import and patch the E2B SDK
+    import os
+    import requests
+    from string import Template
+    from e2b_code_interpreter import Sandbox
+    
+    # 注意为用户配置 never timeout
+    sbx: Sandbox = Sandbox.create(template="openclaw-sbs", metadata={
+                                   "e2b.agents.kruise.io/never-timeout": "true"
+                                 })
+    print(f"sandbox id: {sbx.sandbox_id}")
+    
+    # 基于环境变量中的 GATEWAY_TOKEN, DASHSCOPE_API_KEY, EXTERNAL_ACCESS_DOMAIN 读取
+    GATEWAY_TOKEN = os.environ.get("GATEWAY_TOKEN", "clawdbot-mode-123456")
+    DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "sk-****")
+    
+    
+    #渲染 openclaw-template.json 文件， 并将渲染后的文件覆盖沙盒中 /root/.openclaw/openclaw.json 的内容，触发openclaw重启更新配置
+    template_path = "openclaw_template.json"
+    with open(template_path, "r") as f:
+        template_content = f.read()
+    
+    rendered_content = Template(template_content).safe_substitute(
+        GATEWAY_TOKEN=GATEWAY_TOKEN,
+        DASHSCOPE_API_KEY=DASHSCOPE_API_KEY,
+    )
+    
+    sbx.files.write("/root/.openclaw/openclaw.json", rendered_content)
+    print("已将渲染后的配置写入沙盒 /root/.openclaw/openclaw.json")
+    print(f"sandbox: {sbx}")
+    print(f"sandbox id: {sbx.sandbox_id}")
+```
+
+执行代码可以得到创建后返回的Sandbox对象，获取新创建Sandbox对象的详细信息
+
+```python
+print(f"sandbox: {sbx}")
+print(f"sandbox id: {sbx.sandbox_id}")
+> 创建后返回的 Sandbox 对象中包含新创建 Sandbox 的详细信息。sandbox id 的命名格式为 `{Namespace}--{Sandbox Name}`，其中 `--` 之前为对应资源所处的 K8s 命名空间，之后为 Sandbox 的名称。
+
+#### 休眠与唤醒
+
+当用户长时间不使用时，可以将对应 Sandbox 挂起，触发沙箱休眠。休眠期间，沙箱中文件系统等状态被冻结，ACS 不会收取 CPU、Memory 资源的费用，只会产生少量的存储成本。
+
+```python
+from e2b_code_interpreter import Sandbox
+
+# 通过 sandbox ID 连接到已存在的 sandbox
+sandbox_id = "default--openclaw-52xbx"  # 替换为你的实际 sandbox ID
+# 注意根据申请时的申请信息，配置timeout时间
+sbx = Sandbox.connect(sandbox_id, timeout=2592000)
+
+# 挂起Sandbox
+sbx.beta_pause()
+
+input("press ENTER to step")
+
+# 恢复被挂起的Sandbox，注意timeout配置
+sbx.connect(timeout=2592000)
+```
+
+> 沙箱休眠成功后，沙箱的状态会变成休眠状态，对应的 Pod 也会消失。注意沙箱实例休眠期间，OpenClaw 服务将处于不可访问状态。
 
 ## 访问 OpenClaw Web UI
 
-部署完成后，可以通过浏览器直接访问 OpenClaw 沙箱的 Web 控制台。需要通过testopenclaw.py创建的sandbox才可以直接访问，sandboxset里的预热的sandbox无法直接访问，请参考testopenclaw.py里创建sandbox
+创建并配置好 Sandbox 后，可以通过以下方式访问 OpenClaw Web UI.
+
+**注意**：通过create_openclaw.py创建的sandbox才可以直接访问，sandboxset里的预热的sandbox无法直接访问，请参考create_openclaw里创建sandbox
 
 ### 域名格式说明
 
 OpenClaw 沙箱通过 PrivateZone 泛域名解析 + ALB 路由实现访问，域名格式为：
-
-```
-<port>-<namespace>--<pod-name>.<e2b-domain>?token=<gateway-token>
+`https://<port>-<namespace>--<pod-name>.<e2b-domain>?token=<gateway-token>
                  ↑↑
-              双连字符（重要！）
-```
+              双连字符（重要！）`
 
 **参数说明：**
 - `port`: OpenClaw Web UI 端口，固定为 `18789`
@@ -314,156 +456,6 @@ https://18789-default--openclaw-abc12.agent-vpc.infra?token=clawdbot-mode-123456
 ```
 
 ![img_14.png](img_14.png)
-
-## 手动测试 (可选)
-### 配置域名的解析
-
-#### 本地配置Host: 用于快速验证
-
-1.  获取ALB的访问端点：ack-sandbox-manager 集群中使用Alb作为Ingress，在服务实例详情页，可以找到ACS控制台的链接，点击链接查看sandbox-manager的网关，可以获取ALB的访问端点，如下图所示 
-    
-    ![image.png](img_2.png)
-    
-2.  获取Alb端点对应的公网地址：本地通过ping ALB的访问端点得到公网Ip `ping alb-xxxxxx`
-    
-3.  将ALB的公网地址和域名配置到本地host：`echo "ALB_PUBLIC_IP api.E2B_DOMAIN" >> /etc/hosts` 示例为： `xx.xxx.xx.xxx api.agent-vpc.infra`
-    
-4.  配置完Host后，无需配置DNS解析，在本地就可以管理E2B沙箱，具体使用方式，参考“使用沙箱demo”章节。
-    
-
-#### 配置DNS解析：用于生产环境
-
-1.  获取ALB的访问端点： ack-sandbox-manager 集群中使用Alb作为Ingress，在服务实例详情页，可以到ACS控制台的链接，点击链接查看sandbox-manager的网关，可以获取ALB的访问端点，如下图所示 ![image.png](img_2.png)
-    
-2.  配置DNS解析： 请将Alb的访问端点 以 CNAME 记录类型解析到对应域名， ![image.png](img_5.png)
-    
-3.  如需通过内网访问，可以通过PrivateZone 为E2B 添加内网域名。(如果部署时选择了新建VPC, 已经为您自动配置了PrivateZone，后续只需要添加解析记录)【可选】
-    
-
-替换xxxx为您前面指定的域名，返回值2xx表示e2b服务已运行,如果是自行签发的证书，需要指定fullchain.pem；或通过配置环境变量使用您本地的证书 【该动作为创建sandbox的动作】e2b使用的可以请自行替换 “admin-987654321"-> 实际的key
-
-```yaml
-curl --cacert fullchain.pem -X POST --location "https://api.agent-vpc.infra/sandboxes" \
-    -H "Content-Type: application/json" \
-    -H "X-API-Key: admin-987654321" \
-    -d '{
-          "templateID": "openclaw",
-          "timeout": 300
-        }'
-```
-
-当返回结果的json中，存在 "sandboxID" 且 "state":"running"，可以认为e2b服务已运行
-
-```
-
-### 通过e2b sdk创建一个沙箱
-
-```python
-from e2b_code_interpreter import Sandbox
-
-sbx = Sandbox.create(                
-    template="openclaw",    
-    request_timeout=60,
-    metadata={
-      "e2b.agents.kruise.io/never-timeout": "true"   #永不过期，不自动kill
-    }
-)
-r = sbx.commands.run("whoami")
-print(f"Running in sandbox as \"{r.stdout.strip()}\"")
-```
-
-### 休眠唤醒测试代码
-
-```yaml
-写入如下文件到 openclaw.py
-
-from dotenv import load_dotenv
-import os
-import time
-import requests
-from e2b_code_interpreter import Sandbox
-
-def main():
-    print("Hello from openclaw-demo!")
-    load_dotenv()
-
-    # 步骤1: 创建 sandbox
-    print("\n[步骤1] 创建 sandbox...")
-    start_time = time.monotonic()
-    sandbox = Sandbox.create(
-        'openclaw',
-        metadata={
-            "e2b.agents.kruise.io/never-timeout": "true"
-        }
-    )
-    print(f"创建 sandbox 耗时: {time.monotonic() - start_time:.2f} 秒")
-    print(f"Sandbox ID: {sandbox.sandbox_id}")
-    sandbox.files.write("/tmp/test.txt", "Hello, World!")
-    
-    # 等待几秒让服务启动
-    print("等待 3 秒让 gateway 启动...")
-    time.sleep(3)
-
-    # 步骤3: 等待服务就绪
-    print("\n[步骤3] 等待服务就绪...")
-    host = sandbox.get_host(18789)
-    base_url = f"https://{host}"
-    print(f"base_url: {base_url}")
-    
-    start_time = time.monotonic()
-    ready = False
-    while True:
-        try:
-            response = requests.get(
-                f"{base_url}/?token=clawdbot-mode-123456",
-                verify=False,
-                timeout=5
-            )
-            print(f"响应状态码: {response.status_code}")
-            if response.status_code == 200:
-                print("服务已就绪!")
-                print(f"响应内容: {response.text[:200]}...")  # 打印前200字符
-                ready = True
-                break
-        except requests.ConnectionError as e:
-            print(f"连接错误: {e}")
-        except requests.Timeout:
-            print("请求超时，继续等待...")
-        time.sleep(0.5)
-        print("waiting...")
-    
-    print(f"等待就绪总耗时: {time.monotonic() - start_time:.2f} 秒")
-
-    # 步骤4: 暂停前等待用户确认
-    print("\n[步骤4] 服务已就绪，准备暂停 sandbox...")
-    input("按 Enter 键继续执行 pause 操作...")
-
-    # 步骤5: 暂停 sandbox
-    print("\n[步骤5] 执行 sandbox beta_pause...")
-    start_time = time.monotonic()
-    pause_success = sandbox.beta_pause()
-    print(f"pause 耗时: {time.monotonic() - start_time:.2f} 秒")
-    print(f"pause success: {pause_success}") # pause 的结果. None 是预期值，如果有其他错误信息回返回
-
-    # 步骤6: 重新连接 sandbox
-    
-    input("[步骤6] 准备重新连接 sandbox 按 Enter 键继续执行 connect 操作...")
-    # 等待 10秒让 sandbox 完全暂停
-    print("等待 60秒让 sandbox 完全暂停...")
-    time.sleep(60)
-    print("\n[步骤6] 重新连接 sandbox...")
-    start_time = time.monotonic()
-    sameSandbox = sandbox.connect(timeout=180)
-    connect_time = time.monotonic() - start_time
-    print(f"connect 耗时: {connect_time:.2f} 秒")
-    print(f"重新连接成功，Sandbox ID: {sameSandbox.sandbox_id}")
-
-    print("\n所有步骤执行完毕!")
-
-
-if __name__ == "__main__":
-    main()
-```
 
 
 ## 可观测能力
