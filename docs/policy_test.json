@@ -2,7 +2,8 @@
     "Statement": [
         {
             "Action": [
-                "acc:DescribeZones"
+                "acc:DescribeZones",
+                "acc:DescribeCommodityStatus"
             ],
             "Effect": "Allow",
             "Resource": "*"
@@ -55,8 +56,7 @@
                 "cs:UnInstallClusterAddons",
                 "cs:UntagResources",
                 "cs:UpdateControlPlaneLog",
-                "cs:UpgradeCluster",
-                "acc:DescribeCommodityStatus"
+                "cs:UpgradeCluster"
             ],
             "Effect": "Allow",
             "Resource": "*"
