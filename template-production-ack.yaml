@@ -584,9 +584,9 @@ Parameters:
       en: OpenClaw VSwitch CIDR Block 1
       zh-cn: OpenClaw 专用交换机网段 1
     Description:
-      zh-cn: OpenClaw 隔离网段（可用区1），建议使用独立网段如 10.8.x.0/24，便于 TrafficPolicy 精细化控制
-      en: OpenClaw isolated CIDR in Zone 1, recommend using dedicated range like 10.8.x.0/24 for TrafficPolicy control
-    Default: 10.8.0.0/18
+      zh-cn: OpenClaw 隔离网段（可用区1），与业务网段同属 192.168.0.0/16 主网段，使用 192.168.128.x 子网段实现隔离
+      en: OpenClaw isolated CIDR in Zone 1, same 192.168.0.0/16 main CIDR as business network, using 192.168.128.x subnet for isolation
+    Default: 192.168.128.0/24
     Required: true
     AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
     AssociationPropertyMetadata:
@@ -601,9 +601,9 @@ Parameters:
       en: OpenClaw VSwitch CIDR Block 2
       zh-cn: OpenClaw 专用交换机网段 2
     Description:
-      zh-cn: OpenClaw 隔离网段（可用区2），建议使用独立网段如 10.8.x.0/24，便于 TrafficPolicy 精细化控制
-      en: OpenClaw isolated CIDR in Zone 2, recommend using dedicated range like 10.8.x.0/24 for TrafficPolicy control
-    Default: 10.8.64.0/18
+      zh-cn: OpenClaw 隔离网段（可用区2），与业务网段同属 192.168.0.0/16 主网段，使用 192.168.129.x 子网段实现隔离
+      en: OpenClaw isolated CIDR in Zone 2, same 192.168.0.0/16 main CIDR as business network, using 192.168.129.x subnet for isolation
+    Default: 192.168.129.0/24
     Required: true
     AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
     AssociationPropertyMetadata:
@@ -618,9 +618,9 @@ Parameters:
       en: OpenClaw VSwitch CIDR Block 3
       zh-cn: OpenClaw 专用交换机网段 3
     Description:
-      zh-cn: OpenClaw 隔离网段（可用区3），建议使用独立网段如 10.8.x.0/24，便于 TrafficPolicy 精细化控制
-      en: OpenClaw isolated CIDR in Zone 3, recommend using dedicated range like 10.8.x.0/24 for TrafficPolicy control
-    Default: 10.8.128.0/18
+      zh-cn: OpenClaw 隔离网段（可用区3），与业务网段同属 192.168.0.0/16 主网段，使用 192.168.130.x 子网段实现隔离
+      en: OpenClaw isolated CIDR in Zone 3, same 192.168.0.0/16 main CIDR as business network, using 192.168.130.x subnet for isolation
+    Default: 192.168.130.0/24
     Required: true
     AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
     AssociationPropertyMetadata:

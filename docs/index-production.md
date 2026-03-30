@@ -179,10 +179,6 @@
 | 参数 | 说明 | 是否必填 |
 |------|------|---------|
 | **Sandbox 命名空间** | SandboxSet（OpenClaw Pod）和 TestPod 所在的 Kubernetes 命名空间，sandbox-manager 固定部署在 sandbox-system 不受此参数影响 | 默认 `default` |
-| **百炼 API-KEY** | 百炼模型服务的 API Key | 选填 |
-| **OpenClaw 访问 Token** | 访问 OpenClaw 服务的 Token | 选填 |
-| **OpenClaw 预热副本数** | SandboxSet 预热池中的沙箱副本数量 | 默认 `1` |
-| **OpenClaw 镜像** | OpenClaw 容器镜像地址 | 默认使用内置镜像 |
 
 ### 步骤 9：确认并创建
 
@@ -211,7 +207,7 @@
      export DASHSCOPE_API_KEY=****    
    ```
  - 执行 `python create_openclaw.py`
- - 等待脚本完成，得到SandboxId，服务就绪后说明OpenClaw 启动成功，可以访问对应沙箱的OpenClaw Web UI，参考[访问 OpenClaw Web UI](#访问-OpenClaw-Web-UI)
+ - 等待脚本完成，得到SandboxId，服务就绪后说明OpenClaw 启动成功，可以访问对应沙箱的OpenClaw Web UI
 4. 测试创建、休眠、唤醒Openclaw 沙箱
     - 执行 `python test_openclaw.py`
 5. 等待脚本验证所有功能通过，日志中出现 **"创建 sandbox 耗时"** 即代表验证通过
@@ -226,28 +222,30 @@ kind: SandboxSet
 metadata:
   name: openclaw
   namespace: default
-  annotations:
-    e2b.agents.kruise.io/should-init-envd: "true"
   labels:
     app: openclaw
 spec:
-  persistentContents: 
-  - filesystem
+  persistentContents:
+    - filesystem
   replicas: 1
   template:
     metadata:
-      labels:        
+      labels:
         alibabacloud.com/acs: "true"
         app: openclaw
       annotations:
         ops.alibabacloud.com/pause-enabled: "true"
-        k8s.aliyun.com/eci-network-policy-enable: "true"  # 启用 ECI 网络策略
-        network.alibabacloud.com/enable-network-policy-agent: "true"  # 启用网络策略 Agent
-        network.alibabacloud.com/network-policy-mode: "traffic-policy"  # 使用 Poseidon TrafficPolicy 模式
+        k8s.aliyun.com/eci-network-policy-enable: "true"
+        network.alibabacloud.com/enable-network-policy-agent: "true"
+        network.alibabacloud.com/network-policy-mode: "traffic-policy"
     spec:
-      restartPolicy: Always
       automountServiceAccountToken: false
       enableServiceLinks: false
+      hostNetwork: false
+      hostPID: false
+      hostIPC: false
+      shareProcessNamespace: false
+      hostname: openclaw
       dnsPolicy: None
       dnsConfig:
         nameservers:
@@ -260,16 +258,19 @@ spec:
         options:
           - name: ndots
             value: "5"
-      nodeSelector:
-        type: virtual-kubelet
-      tolerations:
-        - key: virtual-kubelet.io/provider
-          operator: Exists
-          effect: NoSchedule
       initContainers:
+        - name: tini-copy
+          image: kube-ai-registry.cn-shanghai.cr.aliyuncs.com/kube-ai/ubuntu-tini:krallin-ubuntu-tini-latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              cp /usr/bin/tini /mnt/tini/tini
+              chmod +x /mnt/tini/tini
+          volumeMounts:
+            - name: tini-volume
+              mountPath: /mnt/tini
         - name: init
           image: registry-cn-hangzhou.ack.aliyuncs.com/acs/agent-runtime:v0.0.2
-          imagePullPolicy: IfNotPresent
           command: [ "sh", "/workspace/entrypoint_inner.sh" ]
           volumeMounts:
             - name: envd-volume
@@ -281,13 +282,50 @@ spec:
               value: "true"
           restartPolicy: Always
       containers:
-        - name: openclaw
-          image: registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2
-          imagePullPolicy: IfNotPresent
+        - name: gateway
+          image: "registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2"
           securityContext:
             readOnlyRootFilesystem: false
-            runAsGroup: 0
             runAsUser: 0
+            runAsGroup: 0
+          command: ["/mnt/tini/tini", "--"]
+          args:
+            - bash
+            - -c
+            - "echo ${CmsGatewayStartScriptB64} | base64 -d | bash"
+          ports:
+            - name: gateway
+              containerPort: 18789
+              protocol: TCP
+            - name: runtime
+              containerPort: 49983
+              protocol: TCP
+          env:
+            - name: ENVD_DIR
+              value: /mnt/envd
+            - name: OPENCLAW_CONFIG_DIR
+              value: /root/.openclaw
+            - name: KUBERNETES_SERVICE_PORT_HTTPS
+              value: ""
+            - name: KUBERNETES_SERVICE_PORT
+              value: ""
+            - name: KUBERNETES_PORT_443_TCP
+              value: ""
+            - name: KUBERNETES_PORT_443_TCP_PROTO
+              value: ""
+            - name: KUBERNETES_PORT_443_TCP_ADDR
+              value: ""
+            - name: KUBERNETES_SERVICE_HOST
+              value: ""
+            - name: KUBERNETES_PORT
+              value: ""
+            - name: KUBERNETES_PORT_443_TCP_PORT
+              value: ""
+          volumeMounts:
+            - name: envd-volume
+              mountPath: /mnt/envd
+            - name: tini-volume
+              mountPath: /mnt/tini
           resources:
             requests:
               cpu: 2
@@ -295,36 +333,50 @@ spec:
             limits:
               cpu: 2
               memory: 4Gi
-          env:
-            - name: ENVD_DIR
-              value: /mnt/envd
-            - name: DASHSCOPE_API_KEY 
-              value: sk-xxxxxxxxxxxxxxxxx  # 替换为真实的 API_KEY
-            - name: GATEWAY_TOKEN 
-              value: clawdbot-mode-123456  # 替换为访问 Token
-          volumeMounts:
-            - name: envd-volume
-              mountPath: /mnt/envd            
-          startupProbe:
-            tcpSocket:
-              port: 18789
-            initialDelaySeconds: 30
-            periodSeconds: 5
-            failureThreshold: 30
           lifecycle:
             postStart:
               exec:
-                command: [ "/bin/bash", "-c", "/mnt/envd/envd-run.sh" ]        
-      terminationGracePeriodSeconds: 30
+                command:
+                  - bash
+                  - /mnt/envd/envd-run.sh
+          startupProbe:
+            exec:
+              command:
+                - node
+                - -e
+                - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 60
+          # livenessProbe:
+          #   exec:
+          #     command:
+          #       - node
+          #       - -e
+          #       - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+          #   initialDelaySeconds: 60
+          #   periodSeconds: 30
+          #   timeoutSeconds: 10
+          # readinessProbe:
+          #   exec:
+          #     command:
+          #       - node
+          #       - -e
+          #       - "require('http').get('http://127.0.0.1:18789/readyz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+          #   initialDelaySeconds: 15
+          #   periodSeconds: 10
+          #   timeoutSeconds: 5
+      terminationGracePeriodSeconds: 1
       volumes:
-        - emptyDir: { }
-          name: envd-volume
+        - name: envd-volume
+          emptyDir: { }
+        - name: tini-volume
+          emptyDir: { }
 ```
 
 **重要字段说明**
 
 *   `SandboxSet.spec.persistentContents: filesystem` — 在 pause/connect 的过程中只保留文件系统（不保留 IP、内存）
-*   `template.spec.restartPolicy: Always`
 *   `template.spec.automountServiceAccountToken: false` — Pod 不挂载 Service Account
 *   `template.spec.enableServiceLinks: false` — Pod 不注入 Service 环境变量
 *   `template.metadata.labels.alibabacloud.com/acs: "true"` — 使用 ACS 算力
@@ -349,8 +401,8 @@ spec:
 **必要的修改**
 
 *   `registry-cn-hangzhou.ack.aliyuncs.com/acs/agent-runtime` — 修改为所在地域的镜像，并且是内网镜像（目前需手动替换，未来会自动注入）
-*   `registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2` — 替换为客户自己构建的镜像
-*   若为了提升拉取速度，也可替换为内网镜像：`registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2`
+*   `registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2` — 替换为客户自己构建的镜像
+*   若为了提升拉取速度，也可替换为内网镜像：`registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2`
 
 **机制简要说明**
 
@@ -390,7 +442,15 @@ kubectl get pods -n default -l app=openclaw
 
 ### 配置域名解析
 
-#### 方式一：本地 Host 配置（快速验证）
+
+
+#### 方式一：DNS 解析（生产环境）
+
+1. 获取 ALB 访问端点
+2. 在 DNS 服务商处，将 ALB 端点以 **CNAME** 记录解析到对应域名
+3. 如需内网访问，可通过 PrivateZone 添加内网域名解析
+
+#### 方式二：本地 Host 配置（需开启ALB公网访问，仅用于临时快速验证）
 
 1. 获取 ALB 访问端点：在服务实例详情页查看 ALB 域名
 2. 通过 `ping` 或 `dig` 获取 ALB 公网 IP
@@ -402,13 +462,6 @@ sudo vim /etc/hosts
 39.103.89.43 18789-default--openclaw-abc12.agent-vpc.infra
 39.103.89.43 api.agent-vpc.infra
 ```
-
-#### 方式二：DNS 解析（生产环境）
-
-1. 获取 ALB 访问端点
-2. 在 DNS 服务商处，将 ALB 端点以 **CNAME** 记录解析到对应域名
-3. 如需内网访问，可通过 PrivateZone 添加内网域名解析
-
 ## 使用沙箱Demo
 
 ### 通过 Python SDK 创建
