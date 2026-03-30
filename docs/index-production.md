@@ -657,7 +657,7 @@ spec:
 
 > **规则匹配逻辑**：从上到下逐条匹配，命中第一条规则即停止。因此 deny openclaw 在前，allow 0.0.0.0/0 在后，确保 OpenClaw 网段被拒绝而其他来源被放行。
 
-### TrafficPolicy
+## TrafficPolicy
 
 > 以下内容来自 Poseidon TrafficPolicy 官方文档，详细介绍了 TrafficPolicy 的核心概念、API 参考和使用示例。
 
