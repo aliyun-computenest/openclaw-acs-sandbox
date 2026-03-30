@@ -131,13 +131,45 @@ def run_aliyun_cli(command: List[str]) -> Dict[str, Any]:
         return {"error": str(error)}
 
 
+def preprocess_template(template_body: str) -> str:
+    """
+    预处理模板内容，替换 ComputeNest 伪参数占位符为实际镜像地址。
+
+    ComputeNest 平台在部署时会自动解析 {{ computenest::acrimage::xxx }} 占位符，
+    但通过 ROS API 直接部署时需要手动替换为实际镜像地址。
+
+    当前已知的伪参数映射：
+    - {{ computenest::acrimage::acs-sandbox-test-pod }}
+      → compute-nest-registry.cn-hangzhou.cr.aliyuncs.com/computenest/acs-sandbox-test-pod:2.0.0
+    """
+    PSEUDO_PARAM_IMAGE_MAP = {
+        "{{ computenest::acrimage::acs-sandbox-test-pod }}": (
+            "compute-nest-registry.cn-hangzhou.cr.aliyuncs.com"
+            "/computenest/acs-sandbox-test-pod:2.0.0"
+        ),
+    }
+
+    replaced_count = 0
+    for placeholder, actual_image in PSEUDO_PARAM_IMAGE_MAP.items():
+        if placeholder in template_body:
+            template_body = template_body.replace(placeholder, actual_image)
+            replaced_count += 1
+            print(f"预处理: 替换伪参数 '{placeholder}' → '{actual_image}'")
+
+    if replaced_count > 0:
+        print(f"预处理完成: 共替换 {replaced_count} 个 ComputeNest 伪参数占位符")
+
+    return template_body
+
+
 def load_template(template_path: str) -> str:
-    """读取模板文件内容"""
+    """读取模板文件内容，并预处理 ComputeNest 伪参数占位符"""
     if not os.path.exists(template_path):
         print(f"模板文件不存在: {template_path}")
         sys.exit(1)
     with open(template_path, "r", encoding="utf-8") as file:
-        return file.read()
+        template_body = file.read()
+    return preprocess_template(template_body)
 
 
 def extract_template_parameters(template_body: str) -> set:

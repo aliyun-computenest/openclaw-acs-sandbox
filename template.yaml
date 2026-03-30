@@ -1406,7 +1406,7 @@ Resources:
             spec:
               containers:
                 - name: acs-sandbox-test-pod
-                  image: compute-nest-registry.cn-hangzhou.cr.aliyuncs.com/computenest/acs-sandbox-test-pod:2.0.0
+                  image: {{ computenest::acrimage::acs-sandbox-test-pod }}
                   imagePullPolicy: Always
                   env:
                     - name: E2B_API_KEY
