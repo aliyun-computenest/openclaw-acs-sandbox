@@ -713,7 +713,7 @@ Parameters:
                 - cn-hongkong
                 - ap-northeast-1
               - ${RegionId}
-          Value: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2
+          Value: registry-${RegionId}.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
         # 其他地域 - 使用杭州公网镜像仓库
         - Condition:
             Fn::Not:
@@ -726,7 +726,7 @@ Parameters:
                   - cn-hongkong
                   - ap-northeast-1
                 - ${RegionId}
-          Value: registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2
+          Value: registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
   EnablePublicIp:
     Type: Boolean
     Description:
@@ -1692,6 +1692,11 @@ Metadata:
       - ClusterOption
       - OpenClawImage
       - OpenClawReplicas
+      - EnableCmsObservability
+      - CmsWorkspaceName
+      - CmsArmsLicenseKey
+      - CmsArmsProject
+      - CmsServiceName
     ParameterGroups:
       - Parameters:
           - WhitelistConfirmation
