@@ -71,7 +71,7 @@ def main():
             print(f"连接错误: {e}")
         except requests.Timeout:
             print("请求超时，继续等待...")
-        time.sleep(20)
+        time.sleep(2)
         print("waiting...")
 
     print(f"等待就绪总耗时: {time.monotonic() - start_time:.2f} 秒")
