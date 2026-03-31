@@ -159,6 +159,8 @@ Parameters:
       - cn-shanghai-l
       - cn-shanghai-m
       - cn-shanghai-n
+      - cn-qingdao-b
+      - cn-qingdao-c
       - cn-hongkong-b
       - cn-hongkong-c
       - cn-hongkong-d
@@ -174,7 +176,6 @@ Parameters:
     AssociationPropertyMetadata:
       ExclusiveTo:
         - ZoneId2
-
 
     Label:
       en: Zone ID 1
@@ -206,6 +207,8 @@ Parameters:
       - cn-shanghai-l
       - cn-shanghai-m
       - cn-shanghai-n
+      - cn-qingdao-b
+      - cn-qingdao-c
       - cn-hongkong-b
       - cn-hongkong-c
       - cn-hongkong-d
@@ -746,36 +749,7 @@ Parameters:
       zh-cn: 启用后将通过无侵入方式接入阿里云云监控2.0（ARMS），自动采集 OpenClaw 的 Trace、Metrics 等可观测数据。需要提前在云监控2.0控制台创建工作空间。
       en: When enabled, OpenClaw will be instrumented with Alibaba Cloud CMS 2.0 (ARMS) for automatic trace and metrics collection. Requires a pre-created CMS 2.0 workspace.
     Default: false
-  CmsArmsLicenseKey:
-    Type: String
-    Label:
-      en: ARMS License Key
-      zh-cn: ARMS 鉴权 License Key
-    Description:
-      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 authToken 字段。可在云监控2.0控制台的接入中心获取。
-      en: Obtained from CMS 2.0 GetServiceObservability API, the authToken field in entryPointInfo.
-    Default: ''
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - true
-            - ${EnableCmsObservability}
-  CmsArmsProject:
-    Type: String
-    Label:
-      en: ARMS Project
-      zh-cn: ARMS 项目名
-    Description:
-      zh-cn: 通过云监控2.0 GetServiceObservability API 获取，值为 entryPointInfo 中 project 字段。CMS 上报端点将根据此项目名自动推算。
-      en: Obtained from CMS 2.0 GetServiceObservability API, the project field in entryPointInfo. CMS endpoint will be auto-derived from this project name.
-    Default: ''
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - true
-            - ${EnableCmsObservability}
+
   CmsWorkspaceName:
     Type: String
     Label:
@@ -793,23 +767,18 @@ Parameters:
           Fn::Equals:
             - true
             - ${EnableCmsObservability}
-  CmsServiceName:
-    Type: String
-    Label:
-      en: CMS Service Name
-      zh-cn: 应用监控服务名
-    Description:
-      zh-cn: 上报到云监控2.0应用监控的服务名称，用户可自定义。
-      en: Service name reported to CMS 2.0 application monitoring, user-defined.
-    Default: openclaw
-    AssociationPropertyMetadata:
-      Visible:
-        Condition:
-          Fn::Equals:
-            - true
-            - ${EnableCmsObservability}
+
 
 Resources:
+  # ========== CMS 可观测性：通过 DATASOURCE 自动查询 ServiceObservability 信息 ==========
+  CmsServiceObservability:
+    Type: DATASOURCE::CMS2::ServiceObservability
+    Condition: EnableCmsObservabilityCondition
+    Properties:
+      RefreshOptions: Always
+      Type: apm
+      Workspace:
+        Ref: CmsWorkspaceName
   VpcModule:
     Type: MODULE::ACS::ComputeNest::VpcAndVSwitch
     Version: default
@@ -1247,20 +1216,34 @@ Resources:
                         echo "=== Starting Gateway ==="
                         exec node openclaw.mjs gateway run --allow-unconfigured
                       - LicenseKey:
-                          Ref: CmsArmsLicenseKey
+                          Fn::Jq:
+                            - First
+                            - .AuthToken
+                            - Fn::GetAtt:
+                                - CmsServiceObservability
+                                - EntryPointInfo
                         ArmsProject:
-                          Ref: CmsArmsProject
+                          Fn::Jq:
+                            - First
+                            - .Project
+                            - Fn::GetAtt:
+                                - CmsServiceObservability
+                                - EntryPointInfo
                         WorkspaceName:
                           Ref: CmsWorkspaceName
-                        ServiceName:
-                          Ref: CmsServiceName
+                        ServiceName: openclaw
                         Endpoint:
                           Fn::Sub:
-                            - 'https://${CmsArmsProject}.${RegionId}.log.aliyuncs.com/apm/trace/opentelemetry'
+                            - 'https://${ArmsProject}.${RegionId}.log.aliyuncs.com/apm/trace/opentelemetry'
                             - RegionId:
                                 Ref: ALIYUN::Region
-                              CmsArmsProject:
-                                Ref: CmsArmsProject
+                              ArmsProject:
+                                Fn::Jq:
+                                  - First
+                                  - .Project
+                                  - Fn::GetAtt:
+                                      - CmsServiceObservability
+                                      - EntryPointInfo
                   - 'exec node openclaw.mjs gateway run --allow-unconfigured'
             InitImage:
               Fn::Sub:
@@ -1692,11 +1675,6 @@ Metadata:
       - ClusterOption
       - OpenClawImage
       - OpenClawReplicas
-      - EnableCmsObservability
-      - CmsWorkspaceName
-      - CmsArmsLicenseKey
-      - CmsArmsProject
-      - CmsServiceName
     ParameterGroups:
       - Parameters:
           - WhitelistConfirmation
@@ -1749,9 +1727,6 @@ Metadata:
       - Parameters:
           - EnableCmsObservability
           - CmsWorkspaceName
-          - CmsArmsLicenseKey
-          - CmsArmsProject
-          - CmsServiceName
         Label:
           en: CMS Observability
           zh-cn: 云监控可观测性配置

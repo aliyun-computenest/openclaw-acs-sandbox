@@ -180,7 +180,16 @@
 |------|------|---------|
 | **Sandbox 命名空间** | SandboxSet（OpenClaw Pod）和 TestPod 所在的 Kubernetes 命名空间，sandbox-manager 固定部署在 sandbox-system 不受此参数影响 | 默认 `default` |
 
-### 步骤 9：确认并创建
+### 步骤 9：配置 CMS 可观测性（可选）
+
+| 参数 | 说明 | 是否必填 |
+|------|------|---------|
+| **启用 CMS 可观测性** | 开启后将自动接入阿里云云监控 2.0（ARMS APM），为 OpenClaw 沙箱提供链路追踪和性能监控能力 | 默认关闭 |
+| **CMS Workspace 名称** | 云监控 2.0 的工作空间名称，可在 [ARMS 控制台](https://arms.console.aliyun.com/) 的环境管理中查看。系统会自动从该 Workspace 获取所需的 AuthToken 和 Project 信息，无需手动配置 | 开启 CMS 后必填 |
+
+> 💡 **说明**：启用 CMS 可观测性后，系统会通过 `DATASOURCE::CMS2::ServiceObservability` 自动查询 Workspace 的 EntryPointInfo（包括 AuthToken 和 Project），并注入到 OpenClaw 沙箱的启动脚本中，无需手动填写 ARMS 相关参数。
+
+### 步骤 10：确认并创建
 
 1. 点击 **下一步：确认订单**
 2. 确认配置参数和费用

@@ -84,7 +84,11 @@ Examples:
     
 4.  会生成访问E2B API的 E2B\_API\_KEY
     
-5.  sandbox-manager 组件默认的CPU和内存配置默认为2C, 4Gi, 可以按需调整
+5.  sandbox-manager 组件默认的CPU和内存配置默认为2C, 4Gi, 可以按需调整
+
+6. **CMS 可观测性配置**（可选）：
+   - **启用 CMS 可观测性**：开启后将自动接入阿里云云监控 2.0（ARMS APM），为 OpenClaw 沙箱提供链路追踪和性能监控能力。默认关闭
+   - **CMS Workspace 名称**：云监控 2.0 的工作空间名称。开启 CMS 可观测性后必填，可在 [ARMS 控制台](https://arms.console.aliyun.com/) 的环境管理中查看。系统会自动从该 Workspace 获取所需的 AuthToken 和 Project 信息，无需手动配置
 
 7. **ALB 配置**：支持以下两种模式：
    - **新建公网 ALB**（默认）：自动创建一个公网 ALB，适合快速验证场景。如果需要内网 ALB，请关闭公网访问开关。![img_10.png](img_10.png)
