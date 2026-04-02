@@ -118,7 +118,7 @@ metadata:
 spec:
   persistentContents:
     - filesystem
-  replicas: ${OpenClawReplicas}
+  replicas: 1
   template:
     metadata:
       labels:
@@ -161,7 +161,7 @@ spec:
             - name: tini-volume
               mountPath: /mnt/tini
         - name: init
-          image: "${InitImage}"
+          image: registry-cn-hangzhou.ack.aliyuncs.com/acs/agent-runtime:v0.0.4
           command: [ "sh", "/workspace/entrypoint_inner.sh" ]
           volumeMounts:
             - name: envd-volume
@@ -174,7 +174,7 @@ spec:
           restartPolicy: Always
       containers:
         - name: gateway
-          image: "registry-${RegionId}.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2"
+          image: "registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2"
           securityContext:
             readOnlyRootFilesystem: false
             runAsUser: 0

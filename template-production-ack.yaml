@@ -1722,6 +1722,7 @@ Resources:
   # Step 3.5: Poseidon 网络策略组件（提供 GlobalTrafficPolicy / TrafficPolicy CRD）
   PoseidonAddon:
     Type: ALIYUN::CS::ClusterAddons
+    DeletionPolicy: Retain
     DependsOn: ArmsPrometheusSleep
     Properties:
       ClusterId:
@@ -1744,6 +1745,7 @@ Resources:
           Stage: Create/Update
   PoseidonSleep:
     Type: ALIYUN::ROS::Sleep
+    DeletionPolicy: Retain
     DependsOn: PoseidonAddon
     Properties:
       CreateDuration: 60
@@ -2628,7 +2630,7 @@ Resources:
               Ref: OpenClawImage
             InitImage:
               Fn::Sub:
-                - registry-${RegionId}-vpc.ack.aliyuncs.com/acs/agent-runtime:v0.0.4
+                - registry-${RegionId}-vpc.ack.aliyuncs.com/acs/agent-runtime:v0.0.5
                 - RegionId:
                     Ref: ALIYUN::Region
             CmsGatewayStartScriptB64:

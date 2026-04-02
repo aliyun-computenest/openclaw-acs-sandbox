@@ -32,3 +32,4 @@ computenest/
 # Other docs (keep docs/ only)
 *.md
 !docs/*.md
+!.github/copilot-instructions.md

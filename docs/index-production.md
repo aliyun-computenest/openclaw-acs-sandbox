@@ -279,7 +279,7 @@ spec:
             - name: tini-volume
               mountPath: /mnt/tini
         - name: init
-          image: registry-cn-hangzhou.ack.aliyuncs.com/acs/agent-runtime:v0.0.2
+          image: registry-cn-hangzhou.ack.aliyuncs.com/acs/agent-runtime:v0.0.4
           command: [ "sh", "/workspace/entrypoint_inner.sh" ]
           volumeMounts:
             - name: envd-volume

@@ -998,7 +998,7 @@ class NetworkValidator:
             return rc, out.strip().strip("'")
 
         # 7a. Public internet access (SHOULD ALLOW)
-        rc, http_code = _curl_http_code("https://www.alibaba.com", 5)
+        rc, http_code = _curl_http_code("https://www.alibaba.com", 10)
         self.add_result("NetTest", "出方向: 公网访问 (alibaba.com)",
                         http_code not in ("000", ""),
                         f"HTTP {http_code}")

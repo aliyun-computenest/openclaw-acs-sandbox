@@ -1247,7 +1247,7 @@ Resources:
                   - 'exec node openclaw.mjs gateway run --allow-unconfigured'
             InitImage:
               Fn::Sub:
-                - registry-${RegionId}-vpc.ack.aliyuncs.com/acs/agent-runtime:v0.0.4
+                - registry-${RegionId}-vpc.ack.aliyuncs.com/acs/agent-runtime:v0.0.5
                 - RegionId:
                     Ref: ALIYUN::Region
 
