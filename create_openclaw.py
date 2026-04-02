@@ -1,6 +1,5 @@
-# ⚠️  声明：本脚本仅用于测试场景临时验证，禁止用于生产环境。集群测试pod运行
-# WARNING: This script is for temporary testing/validation purposes only.
-#          DO NOT use in production environments.
+# ⚠️  WARNING: This script is for temporary testing/validation purposes only.
+#          DO NOT use in production environments. For cluster testing pod execution.
 
 from dotenv import load_dotenv
 import os
@@ -14,8 +13,8 @@ def main():
     print("Hello from openclaw-demo!")
     load_dotenv(override=True)
 
-    # 步骤1: 创建 sandbox
-    print("\n[步骤1] 创建 sandbox...")
+    # Step 1: Create sandbox
+    print("\n[Step 1] Creating sandbox...")
     start_time = time.monotonic()
     sandbox = Sandbox.create(
         'openclaw',
@@ -23,14 +22,14 @@ def main():
             "e2b.agents.kruise.io/never-timeout": "true"
         }
     )
-    print(f"创建 sandbox 耗时: {time.monotonic() - start_time:.2f} 秒")
+    print(f"Sandbox creation time: {time.monotonic() - start_time:.2f} seconds")
     print(f"Sandbox ID: {sandbox.sandbox_id}")
 
-    # 基于环境变量中的 GATEWAY_TOKEN, DASHSCOPE_API_KEY, EXTERNAL_ACCESS_DOMAIN 读取
+    # Read GATEWAY_TOKEN, DASHSCOPE_API_KEY, EXTERNAL_ACCESS_DOMAIN from environment variables
     GATEWAY_TOKEN = os.environ.get("GATEWAY_TOKEN", "clawdbot-mode-123456")
     DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "sk-****")
 
-    # 渲染 openclaw-template.json 文件， 并将渲染后的文件覆盖沙盒中 /root/.openclaw/openclaw.json 的内容，触发openclaw重启更新配置
+    # Render openclaw-template.json file and overwrite /root/.openclaw/openclaw.json in sandbox to trigger openclaw restart and config update
     template_path = "openclaw_template.json"
     with open(template_path, "r") as f:
         template_content = f.read()
@@ -41,14 +40,14 @@ def main():
     )
 
     sandbox.files.write("/root/.openclaw/openclaw.json", rendered_content)
-    print("已将渲染后的配置写入沙盒 /root/.openclaw/openclaw.json")
+    print("Rendered configuration written to sandbox /root/.openclaw/openclaw.json")
 
-    # 等待几秒让服务启动
-    print("等待 30 秒让 gateway 启动...")
+    # Wait a few seconds for service to start
+    print("Waiting 30 seconds for gateway to start...")
     time.sleep(30)
 
-    # 步骤3: 等待服务就绪
-    print("\n[步骤3] 等待服务就绪...")
+    # Step 3: Wait for service to be ready
+    print("\n[Step 3] Waiting for service to be ready...")
     host = sandbox.get_host(18789)
     base_url = f"https://{host}"
     print(f"base_url: {base_url}")
@@ -62,20 +61,20 @@ def main():
                 verify=False,
                 timeout=5
             )
-            print(f"响应状态码: {response.status_code}")
+            print(f"Response status code: {response.status_code}")
             if response.status_code == 200:
-                print("服务已就绪!")
-                print(f"响应内容: {response.text[:200]}...")  # 打印前200字符
+                print("Service is ready!")
+                print(f"Response content: {response.text[:200]}...")  # Print first 200 characters
                 ready = True
                 break
         except requests.ConnectionError as e:
-            print(f"连接错误: {e}")
+            print(f"Connection error: {e}")
         except requests.Timeout:
-            print("请求超时，继续等待...")
+            print("Request timeout, continuing to wait...")
         time.sleep(2)
         print("waiting...")
 
-    print(f"服务已就绪,等待就绪总耗时: {time.monotonic() - start_time:.2f} 秒")
+    print(f"Service is ready, total wait time: {time.monotonic() - start_time:.2f} seconds")
 
 
 if __name__ == "__main__":

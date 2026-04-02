@@ -17,7 +17,7 @@
                 "models": [
                     {
                         "id": "qwen3.5-plus",
-                        "name": "通义千问",
+                        "name": "qwen3.5-plus",
                         "input": [
                             "text"
                         ],

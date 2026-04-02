@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-容器启动入口脚本
-职责：
-1. 从环境变量读取 TLS 证书内容，写入证书文件
-2. 生成 .env 配置文件
-3. 启动主进程并保活（转发信号，子进程退出时容器随之退出）
+Container startup entry script
+Responsibilities:
+1. Read TLS certificate content from environment variables and write to certificate file
+2. Generate .env configuration file
+3. Start main process and keep alive (forward signals, container exits when child process exits)
 """
 
 import os
@@ -13,39 +13,39 @@ import subprocess
 import sys
 
 
-# 证书内容（PEM 格式字符串）从环境变量读取，写入此路径
-# 注意：K8s YAML >- 折叠块会把换行变成空格，需要在写入前还原 PEM 换行格式
+# Certificate content (PEM format string) read from environment variables, written to this path
+# Note: K8s YAML >- folded block converts newlines to spaces, need to restore PEM newline format before writing
 _ssl_cert_raw = os.environ.get("SSL_CERT_FILE", "")
 CERT_CONTENT = _ssl_cert_raw
 CERT_OUTPUT_PATH = "./ca-fullchain.pem"
 
 
 def restore_pem_newlines(pem_content: str) -> str:
-    """还原被 YAML >- 折叠块压平的 PEM 换行格式。
+    """Restore PEM newline format flattened by YAML >- folded block.
 
-    YAML >- 会把多行内容的换行符替换成空格，导致 PEM 格式损坏：
+    YAML >- replaces newlines in multi-line content with spaces, corrupting PEM format:
       -----BEGIN CERTIFICATE----- MIID5j... -----END CERTIFICATE-----
-    需要还原为标准 PEM 格式（每行 64 字符的 base64 + 首尾标记各占一行）。
+    Need to restore to standard PEM format (64-character base64 per line + header/footer on separate lines).
     """
     import re
 
-    # 先把多余空格归一化（连续空格变单空格，去掉首尾空白）
+    # First normalize extra spaces (consecutive spaces become single space, remove leading/trailing whitespace)
     content = " ".join(pem_content.split())
 
-    # 把 "-----END ... ----- -----BEGIN" 之间的空格替换为换行，分割多个证书
+    # Replace spaces between "-----END ... ----- -----BEGIN" with newlines to split multiple certificates
     content = re.sub(r"(-----END [^-]+-----)\s+(-----BEGIN)", r"\1\n\2", content)
 
     result_parts = []
-    # 逐个处理每段 PEM（BEGIN ... END）
+    # Process each PEM section (BEGIN ... END) one by one
     for match in re.finditer(r"(-----BEGIN [^-]+-----)(.*?)(-----END [^-]+-----)", content, re.DOTALL):
         header = match.group(1).strip()
         body = match.group(2).strip()
         footer = match.group(3).strip()
 
-        # body 里可能还有空格（原来的行内空格），去掉所有空格得到连续 base64
+        # Body may still have spaces (original inline spaces), remove all spaces to get continuous base64
         body_clean = body.replace(" ", "")
 
-        # 按 64 字符分行
+        # Split into lines of 64 characters
         body_lines = [body_clean[i:i + 64] for i in range(0, len(body_clean), 64)]
 
         result_parts.append(header + "\n" + "\n".join(body_lines) + "\n" + footer)
@@ -53,48 +53,48 @@ def restore_pem_newlines(pem_content: str) -> str:
     if result_parts:
         return "\n".join(result_parts) + "\n"
 
-    # 如果没有匹配到 PEM 结构，原样返回（可能本来就是正常格式）
+    # If no PEM structure matched, return as-is (may already be in normal format)
     return pem_content
 
-# 主进程启动命令（通过环境变量或命令行参数传入）
+# Main process startup command (passed via environment variable or command line argument)
 MAIN_COMMAND = os.environ.get("MAIN_COMMAND", "")
 
-# .env 文件输出路径
+# .env file output path
 ENV_FILE_OUTPUT_PATH = os.environ.get("ENV_FILE_OUTPUT_PATH", "./.env")
 
 
 def write_cert_files():
-    """从环境变量 SSL_CERT_FILE 读取公钥证书内容，写入 ca-fullchain.pem。
-    写入完成后将 SSL_CERT_FILE 环境变量更新为文件路径，
-    确保 httpx/ssl 等库读取到的是合法的文件路径而非证书内容字符串。
+    """Read public key certificate content from SSL_CERT_FILE environment variable and write to ca-fullchain.pem.
+    After writing, update SSL_CERT_FILE environment variable to file path,
+    ensuring httpx/ssl libraries read a valid file path instead of certificate content string.
     """
     if not CERT_CONTENT:
-        print("[entrypoint] SSL_CERT_FILE 环境变量未设置，跳过证书写入")
+        print("[entrypoint] SSL_CERT_FILE environment variable not set, skipping certificate writing")
         return
 
     cert_dir = os.path.dirname(CERT_OUTPUT_PATH)
     if cert_dir:
         os.makedirs(cert_dir, exist_ok=True)
 
-    # 还原被 YAML >- 折叠块压平的 PEM 换行格式，再写入文件
+    # Restore PEM newline format flattened by YAML >- folded block, then write to file
     restored_cert = restore_pem_newlines(CERT_CONTENT)
     with open(CERT_OUTPUT_PATH, "w") as cert_file:
         cert_file.write(restored_cert)
 
-    # 关键：将环境变量从证书内容替换为文件路径
-    # httpx 会直接读取 SSL_CERT_FILE 作为 cafile 路径传给 ssl.create_default_context
+    # Key: Replace environment variable from certificate content to file path
+    # httpx will directly read SSL_CERT_FILE as cafile path and pass to ssl.create_default_context
     os.environ["SSL_CERT_FILE"] = os.path.abspath(CERT_OUTPUT_PATH)
-    print(f"[entrypoint] 证书已写入: {CERT_OUTPUT_PATH}，SSL_CERT_FILE 已更新为文件路径")
+    print(f"[entrypoint] Certificate written to: {CERT_OUTPUT_PATH}, SSL_CERT_FILE updated to file path")
 
 
 def write_env_file():
-    """生成 .env 配置文件，E2B_API_KEY / E2B_DOMAIN 从环境变量读取"""
+    """Generate .env configuration file, E2B_API_KEY / E2B_DOMAIN read from environment variables"""
     e2b_api_key = os.environ.get("E2B_API_KEY", "")
     e2b_domain = os.environ.get("E2B_DOMAIN", "agent-vpc.infra")
 
     env_content = f"""# E2B Environment Variables
-# 按照自己的实际情况修改变量
-# 默认域名
+# Modify variables according to your actual situation
+# Default domain
 E2B_DOMAIN={e2b_domain}
 # E2B API Key
 E2B_API_KEY={e2b_api_key}
@@ -108,52 +108,52 @@ SSL_CERT_FILE=./ca-fullchain.pem
 
     with open(ENV_FILE_OUTPUT_PATH, "w") as env_file:
         env_file.write(env_content)
-    print(f"[entrypoint] .env 文件已生成: {ENV_FILE_OUTPUT_PATH}")
+    print(f"[entrypoint] .env file generated: {ENV_FILE_OUTPUT_PATH}")
 
 
 
 def start_main_process(command):
-    """启动主进程，转发信号，子进程退出时脚本随之退出"""
+    """Start main process, forward signals, script exits when child process exits"""
     if not command:
-        print("[entrypoint] MAIN_COMMAND 未设置，容器将保持运行（保活模式）")
+        print("[entrypoint] MAIN_COMMAND not set, container will keep running (keep-alive mode)")
         keep_alive()
         return
 
-    print(f"[entrypoint] 启动主进程: {command}")
+    print(f"[entrypoint] Starting main process: {command}")
     process = subprocess.Popen(command, shell=True)
 
-    # 将 SIGTERM / SIGINT 转发给子进程，确保优雅退出
+    # Forward SIGTERM / SIGINT to child process to ensure graceful exit
     def forward_signal(signum, _frame):
-        print(f"[entrypoint] 收到信号 {signum}，转发给子进程")
+        print(f"[entrypoint] Received signal {signum}, forwarding to child process")
         process.send_signal(signum)
 
     signal.signal(signal.SIGTERM, forward_signal)
     signal.signal(signal.SIGINT, forward_signal)
 
     exit_code = process.wait()
-    print(f"[entrypoint] 主进程已退出，退出码: {exit_code}")
+    print(f"[entrypoint] Main process exited, exit code: {exit_code}")
     sys.exit(exit_code)
 
 
 def keep_alive():
-    """无主进程时保持容器运行，收到终止信号后正常退出"""
+    """Keep container running when no main process, exit normally after receiving termination signal"""
     def handle_exit(signum, _frame):
-        print(f"[entrypoint] 收到信号 {signum}，容器退出")
+        print(f"[entrypoint] Received signal {signum}, container exiting")
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, handle_exit)
     signal.signal(signal.SIGINT, handle_exit)
 
-    print("[entrypoint] 容器保活中，等待终止信号...")
+    print("[entrypoint] Container keeping alive, waiting for termination signal...")
     signal.pause()
 
 
 if __name__ == "__main__":
-    print("[entrypoint] 初始化开始")
+    print("[entrypoint] Initialization started")
 
     write_cert_files()
     write_env_file()
 
-    # 支持通过命令行参数传入主命令，优先级高于环境变量
+    # Support passing main command via command line arguments, higher priority than environment variables
     command = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else MAIN_COMMAND
     start_main_process(command)
