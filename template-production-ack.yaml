@@ -910,6 +910,7 @@ Parameters:
                 - ap-southeast-1
                 - cn-hongkong
                 - ap-northeast-1
+                - us-east-1
               - ${RegionId}
           Value: registry-${RegionId}.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
         - Condition:
@@ -922,6 +923,7 @@ Parameters:
                   - ap-southeast-1
                   - cn-hongkong
                   - ap-northeast-1
+                  - us-east-1
                 - ${RegionId}
           Value: registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
   EnablePublicIp:
@@ -945,11 +947,12 @@ Parameters:
     Default: false
   CmsWorkspaceName:
     Type: String
+    Required: true
     Label:
       en: CMS Workspace Name
       zh-cn: 云监控工作空间名称
     Description:
-      zh-cn: 云监控2.0工作空间名称。如不填写，将使用默认工作空间 default-cms-${主账号UID}-${RegionId}。可在云监控2.0控制台查看。
+      zh-cn: 云监控2.0工作空间名称。如启用云监控可观测性，必须填写。可在云监控2.0控制台创建工作空间，
       en: CMS 2.0 workspace name. If empty, defaults to default-cms-${AccountUID}-${RegionId}.
     Default: ''
     AssociationProperty: ALIYUN::CMS::Workspace
