@@ -962,6 +962,22 @@ Parameters:
           Fn::Equals:
             - true
             - ${EnableCmsObservability}
+  CmsServiceName:
+    Type: String
+    Required: false
+    Label:
+      en: CMS Service Name
+      zh-cn: 云监控应用服务名称
+    Description:
+      zh-cn: 云监控2.0中的应用服务名称，用于标识 OpenClaw 的 Trace 数据来源。
+      en: Application service name in CMS 2.0, used to identify the source of OpenClaw trace data.
+    Default: openclaw
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableCmsObservability}
 Resources:
   # ========== CMS 可观测性：通过 DATASOURCE 自动查询 ServiceObservability 信息 ==========
   CmsServiceObservability:
@@ -2663,7 +2679,8 @@ Resources:
                                 - EntryPointInfo
                         WorkspaceName:
                           Ref: CmsWorkspaceName
-                        ServiceName: openclaw
+                        ServiceName:
+                          Ref: CmsServiceName
                         Endpoint:
                           Fn::Sub:
                             - 'https://${ArmsProject}.${RegionId}.log.aliyuncs.com/apm/trace/opentelemetry'
@@ -3136,6 +3153,7 @@ Metadata:
       - Parameters:
           - EnableCmsObservability
           - CmsWorkspaceName
+          - CmsServiceName
         Label:
           en: CMS Observability
           zh-cn: 云监控可观测性配置

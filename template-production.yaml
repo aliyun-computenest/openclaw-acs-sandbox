@@ -2158,7 +2158,7 @@ Resources:
     Type: DATASOURCE::PVTZ::Zones
     DependsOn: OpenClawSandboxSet
     Properties:
-      QueryVpcId:
+      VpcId:
         Ref: VpcId
       RefreshOptions: Always
   # Step 2: 用 Fn::Jq 过滤出与 E2BDomainAddress 同名的 Zone，获取其 ZoneId
@@ -2196,24 +2196,10 @@ Resources:
               - ExistingVpcZones
               - Zones
       Vpcs:
-        Fn::ListMerge:
-          - Fn::Select:
-              - 0
-              - Fn::Jq:
-                  - All
-                  - '[.[] | {VpcId: .VpcId, RegionId: .RegionId}]'
-                  - Fn::GetAtt:
-                      - ExistingZoneInfo
-                      - BindVpcs
-          - - VpcId:
-                Fn::If:
-                  - CreateNewVpcCondition
-                  - Fn::GetAtt:
-                      - Vpc
-                      - VpcId
-                  - Ref: VpcId
-              RegionId:
-                Ref: ALIYUN::Region
+        - VpcId:
+            Ref: VpcId
+          RegionId:
+            Ref: ALIYUN::Region
   # Step 5: 在已有 Zone 中创建 CNAME 记录（指向 ALB）
   ExistingPrivateZoneCnameRecord:
     Condition: UseExistingPrivateZoneCondition

@@ -1,0 +1,763 @@
+ROSTemplateFormatVersion: '2015-09-01'
+Description:
+  en: Deploy OpenClaw Management Platform to an existing ACS cluster with Supabase backend
+  zh-cn: 在已有ACS集群上部署OpenClaw管理平台，自动创建Supabase后端数据库
+
+Parameters:
+  # ==================== E2B Sandbox 配置 ====================
+  ServiceInstanceId:
+    Type: String
+    Label:
+      zh-cn: E2B Sandbox 服务实例
+      en: E2B Sandbox Service Instance
+    Description:
+      zh-cn: 选择已部署的 E2B Sandbox ComputeNest 服务实例（将自动获取集群ID、VPC等信息）
+      en: Select an existing deployed E2B Sandbox ComputeNest service instance (ClusterId, VPC will be auto-detected)
+    AssociationProperty: ALIYUN::ComputeNest::ServiceInstance::ServiceInstanceId
+    AssociationPropertyMetadata:
+      ServiceId: service-56531b838b524f5a83da
+      Status: Deployed
+    Required: true
+
+  # ==================== Supabase 配置 ====================
+  ZoneId:
+    Type: String
+    Label:
+      zh-cn: Supabase 可用区
+      en: Supabase Zone ID
+    Description:
+      zh-cn: Supabase 实例所在的可用区
+      en: Availability zone for Supabase instance
+    AssociationProperty: ALIYUN::ECS::Instance:ZoneId
+    AllowedValues:
+      - cn-hangzhou-j
+      - cn-shanghai-l
+      - cn-beijing-i
+      - cn-zhangjiakou-b
+      - cn-shenzhen-f
+      - cn-chengdu-a
+      - cn-hongkong-c
+    Required: true
+
+  SupabaseProjectSpec:
+    Type: String
+    Label:
+      zh-cn: Supabase 实例规格
+      en: Supabase Instance Spec
+    Description:
+      zh-cn: Supabase 实例规格
+      en: Supabase instance specification
+    Default: 2C2G
+    AllowedValues:
+      - 2C2G
+      - 2C4G
+      - 2C8G
+      - 4C16G
+      - 8C32G
+      - 16C64G
+      - 32C128G
+      - 64C256G
+    Required: true
+
+  SupabaseStorageSize:
+    Type: Number
+    Label:
+      zh-cn: Supabase 存储空间(GB)
+      en: Supabase Storage Size (GB)
+    Default: 10
+    MinValue: 1
+
+  SupabaseAccountPassword:
+    Type: String
+    Label:
+      zh-cn: Supabase 数据库密码
+      en: Supabase Account Password
+    Description:
+      zh-cn: 8-32位，需包含大小写字母、数字和特殊字符
+      en: 8-32 characters, must contain uppercase, lowercase, numbers and special characters
+    NoEcho: true
+    AllowedPattern: ^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+=-]).{8,32}$
+    Required: true
+
+  AdminPassword:
+    Type: String
+    Label:
+      zh-cn: 管理员初始密码
+      en: Admin Initial Password
+    Description:
+      zh-cn: 管理平台初始管理员密码，至少6位
+      en: Initial admin password for the platform, at least 6 characters
+    NoEcho: true
+    Default: admin123
+
+  SupabaseVSwitchCidrBlock:
+    Type: String
+    Label:
+      zh-cn: Supabase 交换机网段
+      en: Supabase VSwitch CIDR Block
+    Description:
+      zh-cn: Supabase 专用交换机网段，必须属于 VPC 子网段且不能与已有交换机网段冲突
+      en: CIDR block for Supabase VSwitch, must belong to VPC subnet and not conflict with existing VSwitches
+    Default: 10.0.252.0/22
+    Required: true
+    AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
+
+Resources:
+  # ========== Step 1: 查询已有 E2B Sandbox 服务实例 ==========
+  E2BServiceInstance:
+    Type: DATASOURCE::ComputeNest::ServiceInstance
+    Properties:
+      ServiceInstanceId:
+        Ref: ServiceInstanceId
+
+  # ========== Step 2: 查询集群信息（获取 VpcId） ==========
+  ClusterInfo:
+    Type: DATASOURCE::CS::KubernetesCluster
+    DependsOn: E2BServiceInstance
+    Properties:
+      ClusterId:
+        Fn::Jq:
+          - First
+          - .ClusterId
+          - Fn::GetAtt:
+              - E2BServiceInstance
+              - Outputs
+
+  # ========== Step 3: 创建 VSwitch（Supabase 用） ==========
+  SupabaseVSwitch:
+    Type: ALIYUN::ECS::VSwitch
+    DependsOn: ClusterInfo
+    Properties:
+      VpcId:
+        Fn::GetAtt:
+          - ClusterInfo
+          - VpcId
+      ZoneId:
+        Ref: ZoneId
+      CidrBlock:
+        Ref: SupabaseVSwitchCidrBlock
+      VSwitchName:
+        Fn::Sub: ${ALIYUN::StackName}-supabase-vsw
+
+  # ========== Step 4: 创建 Supabase 实例 ==========
+  SupabaseProject:
+    Type: ALIYUN::GPDB::SupabaseProject
+    DependsOn: SupabaseVSwitch
+    Properties:
+      VpcId:
+        Fn::GetAtt:
+          - ClusterInfo
+          - VpcId
+      ProjectName:
+        Fn::Sub: ${ALIYUN::StackName}
+      ZoneId:
+        Ref: ZoneId
+      ProjectSpec:
+        Ref: SupabaseProjectSpec
+      VSwitchId:
+        Fn::GetAtt:
+          - SupabaseVSwitch
+          - VSwitchId
+      SecurityIPList: 0.0.0.0/0
+      StorageSize:
+        Ref: SupabaseStorageSize
+      AccountPassword:
+        Ref: SupabaseAccountPassword
+      PayType: PayAsYouGo
+
+  # 等待 Supabase 就绪（Supabase 实例创建通常需要 2-5 分钟）
+  SupabaseSleep:
+    Type: ALIYUN::ROS::Sleep
+    DependsOn: SupabaseProject
+    Properties:
+      CreateDuration: 180
+
+  # ========== Step 5: 查询 Supabase 连接信息 ==========
+  SupabaseProjectInfo:
+    Type: DATASOURCE::GPDB::SupabaseProject
+    DependsOn: SupabaseSleep
+    Properties:
+      RefreshOptions: Always
+      ProjectId:
+        Fn::GetAtt:
+          - SupabaseProject
+          - ProjectId
+
+  # ========== Step 6: 创建 Namespace ==========
+  PlatformNamespace:
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn: E2BServiceInstance
+    Properties:
+      ClusterId:
+        Fn::Jq:
+          - First
+          - .ClusterId
+          - Fn::GetAtt:
+              - E2BServiceInstance
+              - Outputs
+      YamlContent: |
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: openclaw-platform
+
+  # ========== Step 7: 创建 ConfigMap（环境变量） ==========
+  PlatformConfigMap:
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn:
+      - PlatformNamespace
+      - SupabaseProjectInfo
+      - E2BServiceInstance
+    Properties:
+      ClusterId:
+        Fn::Jq:
+          - First
+          - .ClusterId
+          - Fn::GetAtt:
+              - E2BServiceInstance
+              - Outputs
+      DefaultNamespace: openclaw-platform
+      YamlContent:
+        Fn::Sub:
+          - |
+            apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: openclaw-platform-config
+              namespace: openclaw-platform
+            data:
+              VITE_SUPABASE_URL: "${SupabaseUrl}"
+              E2B_DOMAIN: "${E2BDomain}"
+              RUN_MIGRATIONS: "true"
+              INIT_ADMIN: "true"
+          - SupabaseUrl:
+              Fn::GetAtt:
+                - SupabaseProjectInfo
+                - SupabaseUrl
+            E2BDomain:
+              Fn::Jq:
+                - First
+                - .E2B_DOMAIN
+                - Fn::GetAtt:
+                    - E2BServiceInstance
+                    - Outputs
+
+  # ========== Step 8: 创建 Secret（敏感信息） ==========
+  PlatformSecret:
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn:
+      - PlatformNamespace
+      - E2BServiceInstance
+    Properties:
+      ClusterId:
+        Fn::Jq:
+          - First
+          - .ClusterId
+          - Fn::GetAtt:
+              - E2BServiceInstance
+              - Outputs
+      DefaultNamespace: openclaw-platform
+      YamlContent:
+        Fn::Sub:
+          - |
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              name: openclaw-platform-secret
+              namespace: openclaw-platform
+            type: Opaque
+            data:
+              VITE_SUPABASE_ANON_KEY: ${SupabaseAnonKeyB64}
+              SERVICE_ROLE_KEY: ${ServiceRoleKeyB64}
+              E2B_API_KEY: ${E2BApiKeyB64}
+              DATABASE_URL: ${DatabaseUrlB64}
+              ADMIN_PASSWORD: ${AdminPasswordB64}
+          - AdminPasswordB64:
+              Fn::Base64Encode:
+                Ref: AdminPassword
+            SupabaseAnonKeyB64:
+              Fn::Base64Encode:
+                Fn::Jq:
+                  - First
+                  - '.[] | select(.Name == "anonKey") | .ApiKey'
+                  - Fn::GetAtt:
+                      - SupabaseProject
+                      - ApiKeys
+            ServiceRoleKeyB64:
+              Fn::Base64Encode:
+                Fn::Jq:
+                  - First
+                  - '.[] | select(.Name == "serviceRoleKey") | .ApiKey'
+                  - Fn::GetAtt:
+                      - SupabaseProject
+                      - ApiKeys
+            E2BApiKeyB64:
+              Fn::Base64Encode:
+                Fn::Jq:
+                  - First
+                  - .E2B_API_KEY
+                  - Fn::GetAtt:
+                      - E2BServiceInstance
+                      - Outputs
+            DatabaseUrlB64:
+              Fn::Base64Encode:
+                Fn::GetAtt:
+                  - SupabaseProject
+                  - DatabaseUrl
+
+  # ========== Step 9: 部署 OpenClaw Platform ==========
+  PlatformDeployment:
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn:
+      - PlatformConfigMap
+      - PlatformSecret
+    Properties:
+      ClusterId:
+        Fn::Jq:
+          - First
+          - .ClusterId
+          - Fn::GetAtt:
+              - E2BServiceInstance
+              - Outputs
+      DefaultNamespace: openclaw-platform
+      YamlContent:
+        Fn::Sub:
+          - |
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: openclaw-platform
+              namespace: openclaw-platform
+              labels:
+                app: openclaw-platform
+            spec:
+              replicas: 1
+              selector:
+                matchLabels:
+                  app: openclaw-platform
+              template:
+                metadata:
+                  labels:
+                    app: openclaw-platform
+                    alibabacloud.com/acs: "true"
+                spec:
+                  containers:
+                    - name: openclaw-platform
+                      image: {{ computenest::acrimage::openclaw-platform }}
+                      ports:
+                        - name: http
+                          containerPort: 8080
+                          protocol: TCP
+                        - name: api
+                          containerPort: 3001
+                          protocol: TCP
+                      envFrom:
+                        - configMapRef:
+                            name: openclaw-platform-config
+                        - secretRef:
+                            name: openclaw-platform-secret
+                      resources:
+                        requests:
+                          cpu: "1"
+                          memory: 1Gi
+                        limits:
+                          cpu: "2"
+                          memory: 2Gi
+                      startupProbe:
+                        httpGet:
+                          path: /api/health
+                          port: 3001
+                        initialDelaySeconds: 10
+                        periodSeconds: 5
+                        failureThreshold: 30
+                      livenessProbe:
+                        httpGet:
+                          path: /api/health
+                          port: 3001
+                        initialDelaySeconds: 30
+                        periodSeconds: 30
+                        timeoutSeconds: 5
+                      readinessProbe:
+                        httpGet:
+                          path: /api/health
+                          port: 3001
+                        initialDelaySeconds: 10
+                        periodSeconds: 10
+                        timeoutSeconds: 5
+
+  # ========== Step 10: 创建 Service ==========
+  PlatformService:
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn: PlatformDeployment
+    Properties:
+      ClusterId:
+        Fn::Jq:
+          - First
+          - .ClusterId
+          - Fn::GetAtt:
+              - E2BServiceInstance
+              - Outputs
+      DefaultNamespace: openclaw-platform
+      YamlContent: |
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: openclaw-platform
+          namespace: openclaw-platform
+          labels:
+            app: openclaw-platform
+        spec:
+          type: ClusterIP
+          selector:
+            app: openclaw-platform
+          ports:
+            - name: http
+              port: 80
+              targetPort: 8080
+              protocol: TCP
+            - name: api
+              port: 3001
+              targetPort: 3001
+              protocol: TCP
+
+  # ========== Step 11: 创建 ALB Ingress ==========
+  PlatformIngress:
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn: PlatformService
+    Properties:
+      ClusterId:
+        Fn::Jq:
+          - First
+          - .ClusterId
+          - Fn::GetAtt:
+              - E2BServiceInstance
+              - Outputs
+      DefaultNamespace: openclaw-platform
+      YamlContent: |
+        apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        metadata:
+          name: openclaw-platform
+          namespace: openclaw-platform
+          annotations:
+            alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+            alb.ingress.kubernetes.io/scheme: intranet
+        spec:
+          ingressClassName: alb
+          rules:
+            - http:
+                paths:
+                  - path: /api
+                    pathType: Prefix
+                    backend:
+                      service:
+                        name: openclaw-platform
+                        port:
+                          number: 3001
+                  - path: /
+                    pathType: Prefix
+                    backend:
+                      service:
+                        name: openclaw-platform
+                        port:
+                          number: 80
+
+  # ========== Step 12: 数据库初始化 Job ==========
+  DbInitJob:
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn:
+      - PlatformSecret
+      - PlatformConfigMap
+    Properties:
+      ClusterId:
+        Fn::Jq:
+          - First
+          - .ClusterId
+          - Fn::GetAtt:
+              - E2BServiceInstance
+              - Outputs
+      DefaultNamespace: openclaw-platform
+      YamlContent:
+        Fn::Sub:
+          - |
+            apiVersion: batch/v1
+            kind: Job
+            metadata:
+              name: openclaw-db-init-${StackSuffix}
+              namespace: openclaw-platform
+            spec:
+              ttlSecondsAfterFinished: 600
+              backoffLimit: 3
+              template:
+                spec:
+                  restartPolicy: OnFailure
+                  containers:
+                    - name: db-init
+                      image: {{ computenest::acrimage::openclaw-platform }}
+                      command: ["sh", "-c"]
+                      args:
+                        - |
+                          set -e
+                          echo "=== Running database initialization ==="
+                          cd /app
+
+                          # Write .env for init-db.js
+                          cat > .env <<ENVEOF
+                          VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+                          VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+                          SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY
+                          DATABASE_URL=$DATABASE_URL
+                          ADMIN_PASSWORD=$ADMIN_PASSWORD
+                          ENVEOF
+
+                          echo "Running migrations..."
+                          node migrations/init-db.js init
+
+                          echo "Creating admin user..."
+                          node migrations/init-db.js init-admin
+
+                          echo "=== Database initialization complete ==="
+                      envFrom:
+                        - configMapRef:
+                            name: openclaw-platform-config
+                        - secretRef:
+                            name: openclaw-platform-secret
+          - StackSuffix:
+              Fn::Select:
+                - 0
+                - Fn::Split:
+                    - '-'
+                    - Ref: ALIYUN::StackId
+      WaitUntil:
+        - Kind: Job
+          ApiVersion: batch/v1
+          Name:
+            Fn::Sub:
+              - openclaw-db-init-${StackSuffix}
+              - StackSuffix:
+                  Fn::Select:
+                    - 0
+                    - Fn::Split:
+                        - '-'
+                        - Ref: ALIYUN::StackId
+          Namespace: openclaw-platform
+          JsonPath: $.status.succeeded
+          Operator: Equals
+          Value: 1
+          Timeout: 300
+          FirstMatch: true
+
+  # ========== Step 13: 健康检查 Job ==========
+  HealthCheckJob:
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn:
+      - PlatformDeployment
+      - DbInitJob
+    Properties:
+      ClusterId:
+        Fn::Jq:
+          - First
+          - .ClusterId
+          - Fn::GetAtt:
+              - E2BServiceInstance
+              - Outputs
+      DefaultNamespace: openclaw-platform
+      YamlContent: |
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: openclaw-platform-healthcheck
+          namespace: openclaw-platform
+        spec:
+          ttlSecondsAfterFinished: 300
+          backoffLimit: 3
+          template:
+            spec:
+              restartPolicy: OnFailure
+              containers:
+                - name: healthcheck
+                  image: curlimages/curl:latest
+                  command: ["sh", "-c"]
+                  args:
+                    - |
+                      echo "=== OpenClaw Platform Health Check ==="
+                      echo "Waiting 30s for services to stabilize..."
+                      sleep 30
+
+                      echo "Testing API health endpoint..."
+                      RESULT=$(curl -s -o /dev/null -w "%{http_code}" http://openclaw-platform.openclaw-platform.svc:3001/api/health)
+                      echo "API Health: HTTP $RESULT"
+
+                      if [ "$RESULT" = "200" ]; then
+                        echo "✅ API health check passed"
+                      else
+                        echo "❌ API health check failed"
+                        exit 1
+                      fi
+
+                      echo "Testing frontend..."
+                      RESULT=$(curl -s -o /dev/null -w "%{http_code}" http://openclaw-platform.openclaw-platform.svc:80/)
+                      echo "Frontend: HTTP $RESULT"
+
+                      if [ "$RESULT" = "200" ]; then
+                        echo "✅ Frontend health check passed"
+                      else
+                        echo "❌ Frontend health check failed"
+                        exit 1
+                      fi
+
+                      echo "=== All checks passed ==="
+      WaitUntil:
+        - Kind: Job
+          ApiVersion: batch/v1
+          Name: openclaw-platform-healthcheck
+          Namespace: openclaw-platform
+          JsonPath: $.status.succeeded
+          Operator: Equals
+          Value: 1
+          Timeout: 300
+          FirstMatch: true
+
+  # ========== 查询 ALB 实例（获取实际访问地址） ==========
+  AlbDataSource:
+    Type: DATASOURCE::ALB::LoadBalancers
+    DependsOn: PlatformIngress
+    Properties:
+      RefreshOptions: Always
+      AddressType: Intranet
+      VpcIds:
+        - Fn::GetAtt:
+            - ClusterInfo
+            - VpcId
+      Tags:
+        - Key: ack.aliyun.com
+          Value:
+            Fn::Jq:
+              - First
+              - .ClusterId
+              - Fn::GetAtt:
+                  - E2BServiceInstance
+                  - Outputs
+
+Outputs:
+  PlatformAccessUrl:
+    Label:
+      zh-cn: 平台访问地址（ALB）
+      en: Platform Access URL (ALB)
+    Description:
+      zh-cn: 通过 ALB 内网地址访问管控平台
+      en: Access the management platform via ALB intranet address
+    Value:
+      Fn::Sub:
+        - http://${AlbDns}
+        - AlbDns:
+            Fn::Jq:
+              - First
+              - '.[0].DNSName'
+              - Fn::GetAtt:
+                  - AlbDataSource
+                  - LoadBalancers
+
+  SupabaseProjectId:
+    Label:
+      zh-cn: Supabase 项目ID
+      en: Supabase Project ID
+    Value:
+      Fn::GetAtt:
+        - SupabaseProject
+        - ProjectId
+
+  SupabaseUrl:
+    Label:
+      zh-cn: Supabase URL
+      en: Supabase URL
+    Value:
+      Fn::GetAtt:
+        - SupabaseProjectInfo
+        - SupabaseUrl
+
+  ClusterId:
+    Label:
+      zh-cn: 集群ID
+      en: Cluster ID
+    Value:
+      Fn::Jq:
+        - First
+        - .ClusterId
+        - Fn::GetAtt:
+            - E2BServiceInstance
+            - Outputs
+
+  VpcId:
+    Label:
+      zh-cn: VPC ID
+      en: VPC ID
+    Value:
+      Fn::GetAtt:
+        - ClusterInfo
+        - VpcId
+
+  E2BServiceInstanceId:
+    Label:
+      zh-cn: E2B 服务实例ID
+      en: E2B Service Instance ID
+    Value:
+      Ref: ServiceInstanceId
+
+  E2BDomain:
+    Label:
+      zh-cn: E2B 访问域名
+      en: E2B Domain
+    Value:
+      Fn::Jq:
+        - First
+        - .E2B_DOMAIN
+        - Fn::GetAtt:
+            - E2BServiceInstance
+            - Outputs
+
+  E2BApiKey:
+    Label:
+      zh-cn: E2B API Key
+      en: E2B API Key
+    Value:
+      Fn::Jq:
+        - First
+        - .E2B_API_KEY
+        - Fn::GetAtt:
+            - E2BServiceInstance
+            - Outputs
+    NoEcho: true
+
+  PlatformServiceEndpoint:
+    Label:
+      zh-cn: 平台内网 Service 地址
+      en: Platform Internal Service Endpoint
+    Value: http://openclaw-platform.openclaw-platform.svc:80
+
+Metadata:
+  ALIYUN::ROS::Interface:
+    ParameterGroups:
+      - Parameters:
+          - ServiceInstanceId
+        Label:
+          zh-cn: E2B Sandbox 配置
+          en: E2B Sandbox Configuration
+      - Parameters:
+          - ZoneId
+          - SupabaseProjectSpec
+          - SupabaseStorageSize
+          - SupabaseAccountPassword
+        Label:
+          zh-cn: Supabase 数据库配置
+          en: Supabase Database Configuration
+      - Parameters:
+          - SupabaseVSwitchCidrBlock
+        Label:
+          zh-cn: 网络高级配置
+          en: Network Advanced Configuration
+      - Parameters:
+          - AdminPassword
+        Label:
+          zh-cn: 平台部署配置
+          en: Platform Deployment Configuration
