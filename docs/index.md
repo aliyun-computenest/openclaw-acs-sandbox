@@ -326,7 +326,7 @@ spec:
      export DASHSCOPE_API_KEY=****    
    ```
     - 执行 `python create_openclaw.py`
-    - 等待脚本完成，得到SandboxId，服务就绪后说明OpenClaw 启动成功，可以访问对应沙箱的OpenClaw Web UI，参考下文 [访问 OpenClaw Web UI](#访问-OpenClaw-Web-UI)
+    - 等待脚本完成，得到SandboxId，服务就绪后说明OpenClaw 启动成功，可以访问对应沙箱的OpenClaw Web UI，参考下文 访问 OpenClaw Web UI
 4. 测试创建、休眠、唤醒Openclaw 沙箱
     - 执行 `python test_openclaw.py`
     - 等待脚本验证所有功能通过
