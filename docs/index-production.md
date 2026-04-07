@@ -589,7 +589,7 @@ sbx.connect(timeout=2592000)
   - **未显式放行的流量自动拒绝**（enterprise 安全组默认 Drop）
 
 ## TrafficPolicy
-请参考官方文档： https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/use-trafficpolicy-to-manage-agent-network-access
+请参考官方文档：[使用 TrafficPolicy 管理 Agent 网络访问](https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/use-trafficpolicy-to-manage-agent-network-access)
 ### 模板参数与网络隔离概念速查表
 
 | 模板参数 | 对应概念 | 用途 |
