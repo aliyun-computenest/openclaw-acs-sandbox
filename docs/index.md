@@ -316,7 +316,7 @@ spec:
 
 ##  自动化测试 (无需配置本地环境和域名解析，可用于快速验证)
 1. 点击计算巢服务实例，找到实例内包含的acs的集群。![img_8.png](img_8.png)
-2. 点击集群容器组界面，找到acs-test-pod，点击终端登录![img_9.png](img_9.png)
+2. 点击集群容器组界面，找到acs-sandbox-test-pod，点击终端登录![img_9.png](img_9.png)
 3. 测试创建OpenClaw 沙箱
     - 配置以下环境变量，为OpenClaw配置GATEWAY_TOKEN 以及访问百炼的API_KEY,若不执行此步骤，将会使用默认值
       GATEWAY_TOKEN的默认值为：clawdbot-mode-123456
