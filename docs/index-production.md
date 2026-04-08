@@ -301,7 +301,7 @@ spec:
           args:
             - bash
             - -c
-            - "echo ${CmsGatewayStartScriptB64} | base64 -d | bash"
+            - "exec node openclaw.mjs gateway run --allow-unconfigured"
           ports:
             - name: gateway
               containerPort: 18789
