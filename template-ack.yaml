@@ -2195,6 +2195,8 @@ Resources:
                   labels:
                     app: openclaw
                     alibabacloud.com/acs: "true"
+                    alibabacloud.com/compute-class: agent-sandbox
+
                   annotations:
                     ops.alibabacloud.com/pause-enabled: "true"
                     k8s.aliyun.com/eci-network-policy-enable: "true"
@@ -2315,7 +2317,7 @@ Resources:
                             - node
                             - -e
                             - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
-                        initialDelaySeconds: 5
+                        initialDelaySeconds: 1
                         periodSeconds: 5
                         failureThreshold: 60
                   terminationGracePeriodSeconds: 1
