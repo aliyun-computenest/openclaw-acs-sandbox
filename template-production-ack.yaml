@@ -1,7 +1,7 @@
 ROSTemplateFormatVersion: '2015-09-01'
 Description:
-  en: Production deployment of OpenClaw to ACK cluster with VirtualNode (ACS), 3-AZ, 6 VSwitches (3 business + 3 OpenClaw isolated), PodNetworking VSwitch isolation, Poseidon TrafficPolicy
-  zh-cn: 生产环境部署OpenClaw到ACK+VirtualNode(ACS)集群，3可用区、6交换机（3业务+3 OpenClaw隔离网段）、PodNetworking网络隔离、Poseidon TrafficPolicy网络策略
+  en: Production deployment of OpenClaw to ACK cluster with VirtualNode (ACS), 3-AZ, 6 VSwitches (3 business + 3 OpenClaw isolated), Poseidon TrafficPolicy
+  zh-cn: 生产环境部署OpenClaw到ACK+VirtualNode(ACS)集群，3可用区、6交换机（3业务+3 OpenClaw隔离网段）、Poseidon TrafficPolicy网络策略
 Conditions:
   CreateNewVpcCondition:
     Fn::Equals:
@@ -1270,7 +1270,7 @@ Resources:
           Priority: 1
           Description: 允许OpenClaw VSwitch3网段访问Poseidon 9082
   # ==================== OpenClaw Pod 隔离安全组（enterprise 类型） ====================
-  # enterprise 安全组仅用于 OpenClaw Pod（通过 PodNetworking CRD 关联）
+  # enterprise 安全组仅用于 OpenClaw Pod（通过 annotation 关联）
   # InnerAccessPolicy=Drop，同安全组内实例之间默认不互通，实现 Pod 间网络隔离
   # 参考：https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/configure-security-group-rules-to-enforce-access-control-on-ack-clusters
   OpenClawIsolationSecurityGroup:
@@ -1285,7 +1285,7 @@ Resources:
           - Ref: VpcId
       SecurityGroupName:
         Fn::Sub: openclaw-isolation-sg-${ALIYUN::StackName}
-      Description: OpenClaw Pod 隔离安全组（enterprise类型），通过 PodNetworking 关联到 OpenClaw Pod
+      Description: OpenClaw Pod 隔离安全组（enterprise类型），通过 annotation 关联到 OpenClaw Pod
       SecurityGroupType: enterprise
       SecurityGroupIngress:
         # ---- 入方向规则 ----
@@ -2474,60 +2474,6 @@ Resources:
                     - Fn::GetAtt:
                         - BusinessVSwitch3DataSource
                         - VSwitches
-  OpenClawPodNetworking:
-    Type: ALIYUN::CS::ClusterApplication
-    DependsOn:
-      - VirtualNodeSleep
-    Properties:
-      ClusterId:
-        Fn::GetAtt:
-          - AckCluster
-          - ClusterId
-      YamlContent:
-        Fn::Sub:
-          - |
-            apiVersion: network.alibabacloud.com/v1beta1
-            kind: PodNetworking
-            metadata:
-              name: openclaw-network
-            spec:
-              allocationType:
-                type: Elastic
-              selector:
-                podSelector:
-                  matchLabels:
-                    app: openclaw
-              securityGroupIDs:
-                - "${OpenClawSecurityGroupId}"
-              vSwitchOptions:
-                - "${OpenClawVSwitchId1}"
-                - "${OpenClawVSwitchId2}"
-                - "${OpenClawVSwitchId3}"
-          - OpenClawSecurityGroupId:
-              Fn::GetAtt:
-                - OpenClawIsolationSecurityGroup
-                - SecurityGroupId
-            OpenClawVSwitchId1:
-              Fn::If:
-                - CreateNewVpcCondition
-                - Fn::GetAtt:
-                    - OpenClawVSwitch1
-                    - VSwitchId
-                - Ref: OpenClawVSwitchId1
-            OpenClawVSwitchId2:
-              Fn::If:
-                - CreateNewVpcCondition
-                - Fn::GetAtt:
-                    - OpenClawVSwitch2
-                    - VSwitchId
-                - Ref: OpenClawVSwitchId2
-            OpenClawVSwitchId3:
-              Fn::If:
-                - CreateNewVpcCondition
-                - Fn::GetAtt:
-                    - OpenClawVSwitch3
-                    - VSwitchId
-                - Ref: OpenClawVSwitchId3
   # ==================== OpenClaw SandboxSet ====================
   OpenClawSandboxSet:
     Type: ALIYUN::CS::ClusterApplication
@@ -2536,7 +2482,6 @@ Resources:
       - AddonSleep
       - GlobalTrafficPolicyApplication
       - OpenClawTrafficPolicyApplication
-      - OpenClawPodNetworking
     Properties:
       DefaultNamespace:
         Ref: SandboxNamespace
@@ -2564,7 +2509,6 @@ Resources:
                     alibabacloud.com/compute-class: agent-sandbox
                   annotations:
                     ops.alibabacloud.com/pause-enabled: "true"
-                    k8s.aliyun.com/eci-network-policy-enable: "true"
                     network.alibabacloud.com/vswitch-ids: "${OpenClawVSwitchId1},${OpenClawVSwitchId2},${OpenClawVSwitchId3}"
                     network.alibabacloud.com/security-group-ids: "${OpenClawIsolationSecurityGroupId}"
                     network.alibabacloud.com/enable-network-policy-agent: "true"
@@ -3102,8 +3046,8 @@ Outputs:
       zh-cn: OpenClaw Pod 隔离安全组ID
       en: OpenClaw Pod Isolation SecurityGroup ID
     Description:
-      zh-cn: OpenClaw Pod 隔离安全组ID（enterprise类型，通过 PodNetworking 关联，实现 Pod 间网络隔离）
-      en: SecurityGroup ID for OpenClaw Pod isolation (enterprise type, associated via PodNetworking)
+      zh-cn: OpenClaw Pod 隔离安全组ID（enterprise类型，通过 annotation 关联，实现 Pod 间网络隔离）
+      en: SecurityGroup ID for OpenClaw Pod isolation (enterprise type, associated via annotation)
     Value:
       Fn::GetAtt:
         - OpenClawIsolationSecurityGroup

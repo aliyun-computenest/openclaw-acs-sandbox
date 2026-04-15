@@ -1,7 +1,7 @@
 ROSTemplateFormatVersion: '2015-09-01'
 Description:
-  en: Production deployment of OpenClaw to ACK cluster with VirtualNode (ACS), 2-AZ, 4 VSwitches (2 business + 2 OpenClaw isolated), PodNetworking VSwitch isolation, Poseidon TrafficPolicy
-  zh-cn: 生产环境部署OpenClaw到ACK+VirtualNode(ACS)集群，2可用区、4交换机（2业务+2 OpenClaw隔离网段）、PodNetworking网络隔离、Poseidon TrafficPolicy网络策略
+  en: Production deployment of OpenClaw to ACK cluster with VirtualNode (ACS), 2-AZ, 4 VSwitches (2 business + 2 OpenClaw isolated), SecurityGroup isolation, Poseidon TrafficPolicy
+  zh-cn: 生产环境部署OpenClaw到ACK+VirtualNode(ACS)集群，2可用区、4交换机（2业务+2 OpenClaw隔离网段）、安全组网络隔离、Poseidon TrafficPolicy网络策略
 Conditions:
   CreateNewVpcCondition:
     Fn::Equals:
@@ -144,27 +144,24 @@ Parameters:
     Type: String
     Label:
       en: Whitelist Confirmation
-      zh-cn: 白名单配置确认
+      zh-cn: 前置确认
     AssociationProperty: AlertCheckbox
     Default: false
     AssociationPropertyMetadata:
       Description:
         zh-cn: |
-          使用本服务前，请确保已为当前阿里云账号（UID）和部署 Region 完成白名单配置。白名单开通方式：
+          使用本服务前，请确保阅读<a href="https://computenest.console.aliyun.com/service/detail/cn-hangzhou/service-56531b838b524f5a83da/?isInstance=true" target="_blank">服务部署和使用文档</a>：
           <br/>
-          1. 进技术支持群申请白名单，扫码进<a href="https://service-info-public.oss-cn-hangzhou.aliyuncs.com/openclaw-acs-tech-support.png" target="_blank">钉钉群</a>
+          1. 可选择进技术支持群，扫码进<a href="https://service-info-public.oss-cn-hangzhou.aliyuncs.com/openclaw-acs-tech-support.png" target="_blank">钉钉群</a>
           <br/>
-          2. 提交工单加白：<a href="https://smartservice.console.aliyun.com/service/create-ticket" target="_blank">提交工单</a>
         en: |
-          <strong>Important Prerequisite:</strong>
-          Before using this service, please ensure that the whitelist has been configured for your Alibaba Cloud account (UID) and deployment Region. Whitelist activation methods:
+          To ensure smooth end-to-end usage of this service, please join the following tech support group:
           <br/>
-          1. Join DingTalk group to apply for whitelist, scan QR code to join <a href="https://service-info-public.oss-cn-hangzhou.aliyuncs.com/openclaw-acs-tech-support.png" target="_blank">DingTalk group</a>
+          1. Join DingTalk group after service instance creation, scan QR code to join <a href="https://service-info-public.oss-cn-hangzhou.aliyuncs.com/openclaw-acs-tech-support.png" target="_blank">DingTalk group</a>
           <br/>
-          2. Submit a ticket to add to whitelist: <a href="https://smartservice.console.aliyun.com/service/create-ticket" target="_blank">Submit a ticket</a>
       ConfirmText:
-        zh-cn: 我已确认完成白名单配置
-        en: I have confirmed the whitelist configuration
+        zh-cn: 我已阅读服务部署和使用文档，确认可进行部署
+        en: I have read the deployment documentation and confirm I am ready to deploy
       Alert: true
       Type: warning
       MustChecked: true
@@ -641,21 +638,6 @@ Parameters:
       - cloud_efficiency
       - cloud_ssd
       - cloud_essd
-  InstancePassword:
-    Default: Null
-    NoEcho: true
-    Type: String
-    Description:
-      en: Server login password, Length 8-30, must contain three(Capital letters, lowercase letters, numbers, special symbols)
-      zh-cn: 服务器登录密码,长度8-30，必须包含三项（大写字母、小写字母、数字、特殊符号）
-    Label:
-      en: Instance Password
-      zh-cn: 实例密码
-    AllowedPattern: '[0-9A-Za-z\_\-\&:;''<>,=%`~!@#\(\)\$\^\*\+\|\{\}\[\]\.\?\/]+$'
-    ConstraintDescription:
-      en: Length 8-30, must contain three(Capital letters, lowercase letters, numbers, special symbols)
-      zh-cn: 长度8-30，必须包含三项（大写字母、小写字母、数字、特殊符号）
-    AssociationProperty: ALIYUN::ECS::Instance::Password
   WorkerInstanceCount:
     Default: 3
     Type: Number
@@ -1037,7 +1019,7 @@ Resources:
           Priority: 1
           Description: 允许OpenClaw VSwitch2网段访问Poseidon 9082
   # ==================== OpenClaw Pod 隔离安全组（enterprise 类型） ====================
-  # enterprise 安全组仅用于 OpenClaw Pod（通过 PodNetworking CRD 关联）
+  # enterprise 安全组仅用于 OpenClaw Pod（通过 annotation 关联）
   # InnerAccessPolicy=Drop，同安全组内实例之间默认不互通，实现 Pod 间网络隔离
   # 参考：https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/configure-security-group-rules-to-enforce-access-control-on-ack-clusters
   OpenClawIsolationSecurityGroup:
@@ -1052,7 +1034,7 @@ Resources:
           - Ref: VpcId
       SecurityGroupName:
         Fn::Sub: openclaw-isolation-sg-${ALIYUN::StackName}
-      Description: OpenClaw Pod 隔离安全组（enterprise类型），通过 PodNetworking 关联到 OpenClaw Pod
+      Description: OpenClaw Pod 隔离安全组（enterprise类型），通过 annotation 关联到 OpenClaw Pod
       SecurityGroupType: enterprise
       SecurityGroupIngress:
         # ---- 入方向规则 ----
@@ -1349,8 +1331,6 @@ Resources:
               Ref: WorkerSystemDiskCategory
             SystemDiskSize:
               Ref: WorkerSystemDiskSize
-            LoginPassword:
-              Ref: InstancePassword
             VSwitchIds:
               - Fn::If:
                   - CreateNewVpcCondition
@@ -2116,52 +2096,6 @@ Resources:
                     - Fn::GetAtt:
                         - BusinessVSwitch2DataSource
                         - VSwitches
-  OpenClawPodNetworking:
-    Type: ALIYUN::CS::ClusterApplication
-    DependsOn:
-      - VirtualNodeSleep
-    Properties:
-      ClusterId:
-        Fn::GetAtt:
-          - AckCluster
-          - ClusterId
-      YamlContent:
-        Fn::Sub:
-          - |
-            apiVersion: network.alibabacloud.com/v1beta1
-            kind: PodNetworking
-            metadata:
-              name: openclaw-network
-            spec:
-              allocationType:
-                type: Elastic
-              selector:
-                podSelector:
-                  matchLabels:
-                    app: openclaw
-              securityGroupIDs:
-                - "${OpenClawSecurityGroupId}"
-              vSwitchOptions:
-                - "${OpenClawVSwitchId1}"
-                - "${OpenClawVSwitchId2}"
-          - OpenClawSecurityGroupId:
-              Fn::GetAtt:
-                - OpenClawIsolationSecurityGroup
-                - SecurityGroupId
-            OpenClawVSwitchId1:
-              Fn::If:
-                - CreateNewVpcCondition
-                - Fn::GetAtt:
-                    - OpenClawVSwitch1
-                    - VSwitchId
-                - Ref: OpenClawVSwitchId1
-            OpenClawVSwitchId2:
-              Fn::If:
-                - CreateNewVpcCondition
-                - Fn::GetAtt:
-                    - OpenClawVSwitch2
-                    - VSwitchId
-                - Ref: OpenClawVSwitchId2
   # ==================== OpenClaw SandboxSet ====================
   OpenClawSandboxSet:
     Type: ALIYUN::CS::ClusterApplication
@@ -2170,7 +2104,6 @@ Resources:
       - AddonSleep
       - GlobalTrafficPolicyApplication
       - OpenClawTrafficPolicyApplication
-      - OpenClawPodNetworking
     Properties:
       DefaultNamespace:
         Ref: SandboxNamespace
@@ -2198,8 +2131,6 @@ Resources:
                     alibabacloud.com/compute-class: agent-sandbox
 
                   annotations:
-                    ops.alibabacloud.com/pause-enabled: "true"
-                    k8s.aliyun.com/eci-network-policy-enable: "true"
                     network.alibabacloud.com/vswitch-ids: "${OpenClawVSwitchId1},${OpenClawVSwitchId2}"
                     network.alibabacloud.com/security-group-ids: "${OpenClawIsolationSecurityGroupId}"
                     network.alibabacloud.com/enable-network-policy-agent: "true"
@@ -2712,8 +2643,8 @@ Outputs:
       zh-cn: OpenClaw Pod 隔离安全组ID
       en: OpenClaw Pod Isolation SecurityGroup ID
     Description:
-      zh-cn: OpenClaw Pod 隔离安全组ID（enterprise类型，通过 PodNetworking 关联，实现 Pod 间网络隔离）
-      en: SecurityGroup ID for OpenClaw Pod isolation (enterprise type, associated via PodNetworking)
+      zh-cn: OpenClaw Pod 隔离安全组ID（enterprise类型，通过 annotation 关联，实现 Pod 间网络隔离）
+      en: SecurityGroup ID for OpenClaw Pod isolation (enterprise type, associated via annotation)
     Value:
       Fn::GetAtt:
         - OpenClawIsolationSecurityGroup
@@ -2828,7 +2759,6 @@ Metadata:
           - InstanceType
           - WorkerSystemDiskCategory
           - WorkerSystemDiskSize
-          - InstancePassword
           - WorkerInstanceCount
           - ServiceCidr
         Label:
