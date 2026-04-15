@@ -781,71 +781,58 @@ class NetworkValidator:
             print("  [测试模版] 无独立安全组/VSwitch，跳过 Pod 网络注解验证")
             return
         if self.is_ack:
-            print("\n=== 6. Sandbox Pod 网络分配 (ACK PodNetworking) ===")
-            self._test_ack_pod_networking()
+            print("\n=== 6. Sandbox Pod 网络分配 (ACK annotation) ===")
+            self._test_ack_pod_annotations()
         else:
             print("\n=== 6. Sandbox Pod 注解 (ACS) ===")
             self._test_acs_pod_annotations()
 
-    def _test_ack_pod_networking(self):
-        """ACK: verify PodNetworking CRD assigns correct SG and VSwitches."""
-        rc, out, _ = self.kubectl("get podnetworking -A -o json")
-        if rc != 0:
-            self.add_result("PodNetworking", "PodNetworking CRD", False,
-                            "无法查询 PodNetworking 资源")
-            return
-
-        try:
-            data = json.loads(out)
-            items = data.get("items", [])
-            self.add_result("PodNetworking", "PodNetworking 资源数量", len(items) >= 1,
-                            f"发现 {len(items)} 个 PodNetworking")
-
-            openclaw_pn = None
-            for item in items:
-                name = item.get("metadata", {}).get("name", "")
-                if "openclaw" in name.lower():
-                    openclaw_pn = item
-                    break
-            if not openclaw_pn and items:
-                openclaw_pn = items[0]
-
-            if openclaw_pn:
-                pn_name = openclaw_pn.get("metadata", {}).get("name", "")
-                spec = openclaw_pn.get("spec", {})
-
-                pn_sgs = spec.get("securityGroupIDs", [])
-                sg_ok = self.sg_id in pn_sgs if self.sg_id else len(pn_sgs) > 0
-                self.add_result("PodNetworking", "安全组配置", sg_ok,
-                                f"PodNetworking '{pn_name}' SGs: {pn_sgs}"
-                                + (f" (预期包含 {self.sg_id})" if self.sg_id and not sg_ok else ""),
+    def _test_ack_pod_annotations(self):
+        """ACK: verify Pod annotations assign correct SG and VSwitches (no PodNetworking CRD)."""
+        # Check security-group-ids annotation
+        rc, out, _ = self.kubectl(
+            f"get pods -n {self.sandbox_namespace} -l app=openclaw -o jsonpath="
+            "'{.items[0].metadata.annotations.network\\.alibabacloud\\.com/security-group-ids}'"
+        )
+        sg_ids = out.strip("'")
+        if rc == 0 and sg_ids and sg_ids.startswith("sg-"):
+            self.add_result("Annotations", "security-group-ids 注解", True,
+                            f"SGs: {sg_ids}")
+            if self.sg_id:
+                self.add_result("Annotations", "安全组匹配 Stack 输出",
+                                self.sg_id in sg_ids,
+                                f"注解: {sg_ids}, Stack: {self.sg_id}",
                                 severity="P0")
+        else:
+            self.add_result("Annotations", "security-group-ids 注解", False,
+                            f"缺失或无效: {out}", severity="P0")
 
-                pn_vsws = spec.get("vSwitchOptions", [])
-                self.add_result("PodNetworking", "VSwitch 配置",
-                                len(pn_vsws) >= 2,
-                                f"PodNetworking '{pn_name}' VSwitches: {pn_vsws} ({len(pn_vsws)} 条)",
-                                severity="P0")
+        # Check vswitch-ids annotation
+        rc, out, _ = self.kubectl(
+            f"get pods -n {self.sandbox_namespace} -l app=openclaw -o jsonpath="
+            "'{.items[0].metadata.annotations.network\\.alibabacloud\\.com/vswitch-ids}'"
+        )
+        vsw_ids = out.strip("'")
+        if rc == 0 and vsw_ids and "vsw-" in vsw_ids:
+            vsw_list = vsw_ids.split(",")
+            self.add_result("Annotations", "vswitch-ids 注解", len(vsw_list) >= 2,
+                            f"VSwitches: {vsw_list} ({len(vsw_list)} 条)",
+                            severity="P0")
+        else:
+            self.add_result("Annotations", "vswitch-ids 注解", False,
+                            f"缺失或无效: {out}", severity="P0")
 
-                status = openclaw_pn.get("status", {})
-                pn_status = status.get("status", "") or status.get("phase", "")
-                self.add_result("PodNetworking", "PodNetworking 状态",
-                                pn_status == "Ready",
-                                f"Status: {pn_status}" if pn_status else "未就绪")
-        except (json.JSONDecodeError, KeyError) as e:
-            self.add_result("PodNetworking", "PodNetworking 解析", False, f"错误: {e}")
-
-        # ENI actual security group (same check, works for both ACK and ACS)
+        # ENI actual security group
         rc, out, _ = self.kubectl(
             f"get pods -n {self.sandbox_namespace} -l app=openclaw -o jsonpath="
             "'{.items[0].metadata.annotations.network\\.alibabacloud\\.com/security-group-id}'"
         )
         actual_sg = out.strip("'")
         if rc == 0 and actual_sg.startswith("sg-"):
-            self.add_result("PodNetworking", "ENI 实际安全组", True,
+            self.add_result("Annotations", "ENI 实际安全组", True,
                             f"实际安全组: {actual_sg}")
             if self.sg_id:
-                self.add_result("PodNetworking", "ENI 安全组匹配 OpenClaw",
+                self.add_result("Annotations", "ENI 安全组匹配 OpenClaw",
                                 actual_sg == self.sg_id,
                                 f"实际: {actual_sg}, 预期: {self.sg_id}",
                                 severity="P0")
