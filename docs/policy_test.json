@@ -24,6 +24,14 @@
         },
         {
             "Action": [
+                "cms:GetServiceObservability",
+                "cms:ListWorkspaces"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
                 "cs:CreateCluster",
                 "cs:CreateClusterNodePool",
                 "cs:CreateEdasClusterRole",
@@ -97,6 +105,7 @@
                 "pvtz:BindZoneVpc",
                 "pvtz:DeleteZone",
                 "pvtz:DeleteZoneRecord",
+                "pvtz:DescribeZones",
                 "pvtz:DescribeZoneInfo",
                 "pvtz:DescribeZoneRecords",
                 "pvtz:ListTagResources",

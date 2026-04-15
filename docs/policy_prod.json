@@ -24,6 +24,14 @@
         },
         {
             "Action": [
+                "cms:GetServiceObservability",
+                "cms:ListWorkspaces"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+        {
+            "Action": [
                 "cs:CreateCluster",
                 "cs:CreateEdasClusterRole",
                 "cs:CreateEdasClusterRoleBinding",
@@ -102,6 +110,7 @@
                 "pvtz:BindZoneVpc",
                 "pvtz:DeleteZone",
                 "pvtz:DeleteZoneRecord",
+                "pvtz:DescribeZones",
                 "pvtz:DescribeZoneInfo",
                 "pvtz:DescribeZoneRecords",
                 "pvtz:DescribeZones",
@@ -118,7 +127,8 @@
         },
         {
             "Action": [
-                "quotas:ListProductQuotas"
+                "quotas:ListProductQuotas",
+                "quotas:GetProductQuota"
             ],
             "Effect": "Allow",
             "Resource": "acs:quotas:*:*:*"
