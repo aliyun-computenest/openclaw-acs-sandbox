@@ -947,77 +947,10 @@ Resources:
         Fn::Sub: openclaw-vsw2-${ALIYUN::StackName}
   # ==================== ACK 集群安全组（normal 类型） ====================
   # normal 安全组作为 ACK 集群安全组，让 ACK 自动管理基础规则
-  # normal 安全组默认同组内互通（InnerAccessPolicy=Accept），保证集群组件正常运行
-  OpenClawSecurityGroup:
-    Type: ALIYUN::ECS::SecurityGroup
-    Properties:
-      VpcId:
-        Fn::If:
-          - CreateNewVpcCondition
-          - Fn::GetAtt:
-              - Vpc
-              - VpcId
-          - Ref: VpcId
-      SecurityGroupName:
-        Fn::Sub: openclaw-cluster-sg-${ALIYUN::StackName}
-      Description: ACK 集群安全组（normal类型），保证集群基础组件正常运行
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          PortRange: 6443/6443
-          SourceCidrIp:
-            Fn::If:
-              - CreateNewVpcCondition
-              - Ref: OpenClawVSwitchCidrBlock1
-              - Fn::Jq:
-                  - First
-                  - .[0].CidrBlock
-                  - Fn::GetAtt:
-                      - OpenClawVSwitch1DataSource
-                      - VSwitches
-          Priority: 1
-          Description: 允许OpenClaw VSwitch1网段访问API Server 6443
-        - IpProtocol: tcp
-          PortRange: 6443/6443
-          SourceCidrIp:
-            Fn::If:
-              - CreateNewVpcCondition
-              - Ref: OpenClawVSwitchCidrBlock2
-              - Fn::Jq:
-                  - First
-                  - .[0].CidrBlock
-                  - Fn::GetAtt:
-                      - OpenClawVSwitch2DataSource
-                      - VSwitches
-          Priority: 1
-          Description: 允许OpenClaw VSwitch2网段访问API Server 6443
-        - IpProtocol: tcp
-          PortRange: 9082/9082
-          SourceCidrIp:
-            Fn::If:
-              - CreateNewVpcCondition
-              - Ref: OpenClawVSwitchCidrBlock1
-              - Fn::Jq:
-                  - First
-                  - .[0].CidrBlock
-                  - Fn::GetAtt:
-                      - OpenClawVSwitch1DataSource
-                      - VSwitches
-          Priority: 1
-          Description: 允许OpenClaw VSwitch1网段访问Poseidon 9082
-        - IpProtocol: tcp
-          PortRange: 9082/9082
-          SourceCidrIp:
-            Fn::If:
-              - CreateNewVpcCondition
-              - Ref: OpenClawVSwitchCidrBlock2
-              - Fn::Jq:
-                  - First
-                  - .[0].CidrBlock
-                  - Fn::GetAtt:
-                      - OpenClawVSwitch2DataSource
-                      - VSwitches
-          Priority: 1
-          Description: 允许OpenClaw VSwitch2网段访问Poseidon 9082
+  # ==================== ACK 集群安全组 ====================
+  # 不自己创建控制面安全组，让 ACK 自动创建
+  # 集群创建后通过 ClusterDataSource (DATASOURCE::CS::KubernetesCluster) 查出 SecurityGroupId
+  # VirtualNode 和 Outputs 引用 ClusterDataSource.SecurityGroupId
   # ==================== OpenClaw Pod 隔离安全组（enterprise 类型） ====================
   # enterprise 安全组仅用于 OpenClaw Pod（通过 annotation 关联）
   # InnerAccessPolicy=Drop，同安全组内实例之间默认不互通，实现 Pod 间网络隔离
@@ -1038,35 +971,64 @@ Resources:
       SecurityGroupType: enterprise
       SecurityGroupIngress:
         # ---- 入方向规则 ----
-        # 允许 VPC 主网段全端口访问（API Server、kubelet 健康检查等）
+        # 允许业务/管控交换机网段全端口访问（API Server、kubelet 健康检查、sandbox-manager 等）
+        # 参考文档：仅放行集群其他服务/管控使用的交换机网段，不放行 OpenClaw 网段
         - IpProtocol: tcp
           PortRange: 1/65535
           SourceCidrIp:
             Fn::If:
               - CreateNewVpcCondition
-              - Ref: VpcCidrBlock
+              - Ref: VSwitchCidrBlock1
               - Fn::Jq:
                   - First
                   - .[0].CidrBlock
                   - Fn::GetAtt:
-                      - VpcDataSource
-                      - Vpcs
+                      - BusinessVSwitch1DataSource
+                      - VSwitches
           Priority: 1
-          Description: 允许VPC主网段TCP全端口访问
+          Description: 允许业务VSwitch1网段TCP全端口访问
+        - IpProtocol: tcp
+          PortRange: 1/65535
+          SourceCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: VSwitchCidrBlock2
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - BusinessVSwitch2DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许业务VSwitch2网段TCP全端口访问
         - IpProtocol: udp
           PortRange: 1/65535
           SourceCidrIp:
             Fn::If:
               - CreateNewVpcCondition
-              - Ref: VpcCidrBlock
+              - Ref: VSwitchCidrBlock1
               - Fn::Jq:
                   - First
                   - .[0].CidrBlock
                   - Fn::GetAtt:
-                      - VpcDataSource
-                      - Vpcs
+                      - BusinessVSwitch1DataSource
+                      - VSwitches
           Priority: 1
-          Description: 允许VPC主网段UDP全端口访问
+          Description: 允许业务VSwitch1网段UDP全端口访问
+        - IpProtocol: udp
+          PortRange: 1/65535
+          SourceCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: VSwitchCidrBlock2
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - BusinessVSwitch2DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许业务VSwitch2网段UDP全端口访问
         # 允许 OpenClaw 2 个 VSwitch 网段（kubelet 健康检查等）
         - IpProtocol: tcp
           PortRange: 1/65535
@@ -1149,104 +1111,213 @@ Resources:
           DestCidrIp: 100.64.0.0/10
           Priority: 1
           Description: 允许云产品网段UDP(metadata/DNS/ACR/SLB)
-        # 允许访问 API Server 6443（VPC 主网段）
+        # 允许访问 API Server 6443 + 443（业务交换机网段）
+        - IpProtocol: tcp
+          PortRange: 443/443
+          DestCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: VSwitchCidrBlock1
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - BusinessVSwitch1DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许访问API Server 443(业务VSwitch1)
+        - IpProtocol: tcp
+          PortRange: 443/443
+          DestCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: VSwitchCidrBlock2
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - BusinessVSwitch2DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许访问API Server 443(业务VSwitch2)
         - IpProtocol: tcp
           PortRange: 6443/6443
           DestCidrIp:
             Fn::If:
               - CreateNewVpcCondition
-              - Ref: VpcCidrBlock
+              - Ref: VSwitchCidrBlock1
               - Fn::Jq:
                   - First
                   - .[0].CidrBlock
                   - Fn::GetAtt:
-                      - VpcDataSource
-                      - Vpcs
-          Priority: 2
-          Description: 允许访问API Server 6443(VPC主网段)
-        # 允许访问 API Server 6443（ServiceCIDR）
+                      - BusinessVSwitch1DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许访问API Server 6443(业务VSwitch1)
+        - IpProtocol: tcp
+          PortRange: 6443/6443
+          DestCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: VSwitchCidrBlock2
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - BusinessVSwitch2DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许访问API Server 6443(业务VSwitch2)
+        # 允许访问 API Server via ServiceCIDR（init container 通过 kubernetes.default.svc ClusterIP 访问）
+        - IpProtocol: tcp
+          PortRange: 443/443
+          DestCidrIp:
+            Ref: ServiceCidr
+          Priority: 1
+          Description: 允许访问API Server 443(ServiceCIDR)
         - IpProtocol: tcp
           PortRange: 6443/6443
           DestCidrIp:
             Ref: ServiceCidr
-          Priority: 2
+          Priority: 1
           Description: 允许访问API Server 6443(ServiceCIDR)
-        # 允许访问 Poseidon 9082（VPC 主网段）
+        # 允许访问 Poseidon 9082（业务交换机网段）
         - IpProtocol: tcp
           PortRange: 9082/9082
           DestCidrIp:
             Fn::If:
               - CreateNewVpcCondition
-              - Ref: VpcCidrBlock
+              - Ref: VSwitchCidrBlock1
               - Fn::Jq:
                   - First
                   - .[0].CidrBlock
                   - Fn::GetAtt:
-                      - VpcDataSource
-                      - Vpcs
-          Priority: 2
-          Description: 允许访问Poseidon 9082(VPC主网段)
-        # 允许 kubelet 通信（VPC 主网段）
+                      - BusinessVSwitch1DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许访问Poseidon 9082(业务VSwitch1)
         - IpProtocol: tcp
-          PortRange: 10250/10255
+          PortRange: 9082/9082
           DestCidrIp:
             Fn::If:
               - CreateNewVpcCondition
-              - Ref: VpcCidrBlock
+              - Ref: VSwitchCidrBlock2
               - Fn::Jq:
                   - First
                   - .[0].CidrBlock
                   - Fn::GetAtt:
-                      - VpcDataSource
-                      - Vpcs
-          Priority: 2
-          Description: 允许kubelet通信TCP(VPC主网段)
-        # 允许 kube-dns（ServiceCIDR）
+                      - BusinessVSwitch2DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许访问Poseidon 9082(业务VSwitch2)
+        # 允许业务交换机网段 DNS（VPC 内 DNS 解析）
         - IpProtocol: tcp
           PortRange: 53/53
           DestCidrIp:
-            Ref: ServiceCidr
-          Priority: 2
-          Description: 允许kube-dns TCP
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: VSwitchCidrBlock1
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - BusinessVSwitch1DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许业务VSwitch1 DNS TCP
+        - IpProtocol: tcp
+          PortRange: 53/53
+          DestCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: VSwitchCidrBlock2
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - BusinessVSwitch2DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许业务VSwitch2 DNS TCP
         - IpProtocol: udp
           PortRange: 53/53
           DestCidrIp:
-            Ref: ServiceCidr
-          Priority: 2
-          Description: 允许kube-dns UDP
-        # 允许 VPC 内 DNS
-        - IpProtocol: tcp
-          PortRange: 53/53
-          DestCidrIp:
             Fn::If:
               - CreateNewVpcCondition
-              - Ref: VpcCidrBlock
+              - Ref: VSwitchCidrBlock1
               - Fn::Jq:
                   - First
                   - .[0].CidrBlock
                   - Fn::GetAtt:
-                      - VpcDataSource
-                      - Vpcs
-          Priority: 2
-          Description: 允许VPC内DNS TCP
+                      - BusinessVSwitch1DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许业务VSwitch1 DNS UDP
         - IpProtocol: udp
           PortRange: 53/53
           DestCidrIp:
             Fn::If:
               - CreateNewVpcCondition
-              - Ref: VpcCidrBlock
+              - Ref: VSwitchCidrBlock2
               - Fn::Jq:
                   - First
                   - .[0].CidrBlock
                   - Fn::GetAtt:
-                      - VpcDataSource
-                      - Vpcs
-          Priority: 2
-          Description: 允许VPC内DNS UDP
-        # ---- 以下为公网出方向（enterprise 安全组默认 Drop，未放行的流量自动拒绝） ----
-        # 注意：不使用显式 drop 规则，因为 ECI 底层初始化通信会被 drop 规则阻断
-        # enterprise 安全组 InnerAccessPolicy=Drop 已天然实现 Pod 间隔离
-        # 允许公网访问（通过 NAT 网关出去，优先级最低）
+                      - BusinessVSwitch2DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 允许业务VSwitch2 DNS UDP
+        # ---- 拒绝 OpenClaw VSwitch 网段（防止 Pod 间横向移动） ----
+        - IpProtocol: all
+          PortRange: -1/-1
+          DestCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock1
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch1DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 拒绝访问OpenClaw VSwitch1网段
+          Policy: drop
+        - IpProtocol: all
+          PortRange: -1/-1
+          DestCidrIp:
+            Fn::If:
+              - CreateNewVpcCondition
+              - Ref: OpenClawVSwitchCidrBlock2
+              - Fn::Jq:
+                  - First
+                  - .[0].CidrBlock
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch2DataSource
+                      - VSwitches
+          Priority: 1
+          Description: 拒绝访问OpenClaw VSwitch2网段
+          Policy: drop
+        # ---- 拒绝所有内网网段（兜底安全策略） ----
+        - IpProtocol: all
+          PortRange: -1/-1
+          DestCidrIp: 192.168.0.0/16
+          Priority: 50
+          Description: 拒绝访问内网192.168.0.0/16
+          Policy: drop
+        - IpProtocol: all
+          PortRange: -1/-1
+          DestCidrIp: 172.16.0.0/12
+          Priority: 50
+          Description: 拒绝访问内网172.16.0.0/12
+          Policy: drop
+        - IpProtocol: all
+          PortRange: -1/-1
+          DestCidrIp: 10.0.0.0/8
+          Priority: 50
+          Description: 拒绝访问内网10.0.0.0/8
+          Policy: drop
+        # ---- 允许公网出方向（通过 NAT 网关出去，优先级最低） ----
         - IpProtocol: tcp
           PortRange: 1/65535
           DestCidrIp: 0.0.0.0/0
@@ -1272,10 +1343,7 @@ Resources:
       ClusterSpec: ack.pro.small
       KubernetesVersion: '1.35.2-aliyun.1'
       ChargeType: PostPaid
-      SecurityGroupId:
-        Fn::GetAtt:
-          - OpenClawSecurityGroup
-          - SecurityGroupId
+      IsEnterpriseSecurityGroup: true
       VpcId:
         Fn::If:
           - CreateNewVpcCondition
@@ -1461,7 +1529,7 @@ Resources:
                     - Ref: VSwitchId2
                 SGID:
                   Fn::GetAtt:
-                    - OpenClawSecurityGroup
+                    - ClusterDataSource
                     - SecurityGroupId
   VirtualNodeSleep:
     Type: ALIYUN::ROS::Sleep
@@ -1569,18 +1637,6 @@ Resources:
         Fn::GetAtt:
           - AckCluster
           - ClusterId
-  # ==================== DataSource：动态查询 VPC CIDR（用于安全组出方向精确 deny） ====================
-  VpcDataSource:
-    Type: DATASOURCE::VPC::Vpcs
-    DependsOn: Sleep
-    Properties:
-      VpcIds:
-        - Fn::If:
-            - CreateNewVpcCondition
-            - Fn::GetAtt:
-                - Vpc
-                - VpcId
-            - Ref: VpcId
   # ==================== DataSource：动态获取集群信息 ====================
   # 查询集群详情，获取 MasterUrl（含 API Server 内网 IP）
   ClusterDataSource:
@@ -1944,7 +2000,9 @@ Resources:
         Fn::GetAtt:
           - AckCluster
           - ClusterId
-  # ==================== TrafficPolicy 网络隔离策略 ====================
+  # ==================== GlobalTrafficPolicy 网络隔离策略 ====================
+  # 参考文档：production-doc/网络 & 安全组 限制.md
+  # 仅使用 GlobalTrafficPolicy，通过 selector matchLabels 关联 OpenClaw Pod
   GlobalTrafficPolicyApplication:
     Type: ALIYUN::CS::ClusterApplication
     DependsOn: AddonSleep
@@ -1953,149 +2011,45 @@ Resources:
         Fn::GetAtt:
           - AckCluster
           - ClusterId
-      DefaultNamespace: default
-      YamlContent:
-        Fn::Sub:
-          - |
-            apiVersion: network.alibabacloud.com/v1alpha1
-            kind: GlobalTrafficPolicy
-            metadata:
-              name: global-black-list
-            spec:
-              priority: 1000
-              selector: {}
-              ingress:
-                rules:
-                  - action: deny
-                    from:
-                      - cidr: ${OpenClawVSwitchCidr1}
-                      - cidr: ${OpenClawVSwitchCidr2}
-                  - action: allow
-                    from:
-                      - cidr: 0.0.0.0/0
-              egress:
-                rules:
-                  - action: allow
-                    to:
-                      - cidr: 0.0.0.0/0
-          - OpenClawVSwitchCidr1:
-              Fn::If:
-                - CreateNewVpcCondition
-                - Ref: OpenClawVSwitchCidrBlock1
-                - Fn::Jq:
-                    - First
-                    - .[0].CidrBlock
-                    - Fn::GetAtt:
-                        - OpenClawVSwitch1DataSource
-                        - VSwitches
-            OpenClawVSwitchCidr2:
-              Fn::If:
-                - CreateNewVpcCondition
-                - Ref: OpenClawVSwitchCidrBlock2
-                - Fn::Jq:
-                    - First
-                    - .[0].CidrBlock
-                    - Fn::GetAtt:
-                        - OpenClawVSwitch2DataSource
-                        - VSwitches
-  # ==================== OpenClaw TrafficPolicy（Sandbox Pod 网络隔离策略） ====================
-  OpenClawTrafficPolicyApplication:
-    Type: ALIYUN::CS::ClusterApplication
-    DependsOn: AddonSleep
-    Properties:
-      ClusterId:
-        Fn::GetAtt:
-          - AckCluster
-          - ClusterId
-      DefaultNamespace:
-        Ref: SandboxNamespace
-      YamlContent:
-        Fn::Sub:
-          - |
-            apiVersion: network.alibabacloud.com/v1alpha1
-            kind: TrafficPolicy
-            metadata:
-              name: openclaw-policy
-              namespace: ${SandboxNamespace}
-            spec:
-              priority: 100
-              selector:
-                matchLabels:
-                  app: openclaw
-              ingress:
-                rules:
-                  - action: allow
-                    from:
-                      - service:
-                          name: sandbox-gateway
-                          namespace: sandbox-system
-                  - action: allow
-                    from:
-                      - service:
-                          name: sandbox-manager
-                          namespace: sandbox-system
-                  - action: deny
-                    from:
-                      - cidr: 0.0.0.0/0
-              egress:
-                rules:
-                  # 1. 拒绝访问 ECS metadata（安全加固）
-                  - action: deny
-                    to:
-                      - cidr: 100.100.100.200/32
-                  # 2. 允许 kube-dns（K8s Service 方式，ECI 实际不走此路径）
-                  - action: allow
-                    to:
-                      - service:
-                          name: kube-dns
-                          namespace: kube-system
-                  # 3. 允许 VPC DNS（ECI Pod 实际使用的 DNS 通道）
-                  - action: allow
-                    to:
-                      - cidr: 100.100.2.136/32
-                      - cidr: 100.100.2.138/32
-                  # 4. 允许阿里云内部服务网段（VPC 内网镜像仓库 100.103.x.x、VPC DNS 等）
-                  # metadata 100.100.100.200 已在规则1中 deny，此处放行不受影响
-                  - action: allow
-                    to:
-                      - cidr: 100.64.0.0/10
-                  # 5. 允许访问 VPC 主网段（Poseidon 管控面 9082、API Server 6443）
-                  - action: allow
-                    to:
-                      - cidr: ${VSwitchCidr1}
-                      - cidr: ${VSwitchCidr2}
-                  # 6. 拒绝所有其他内网访问（Pod 间隔离核心规则）
-                  - action: deny
-                    to:
-                      - cidr: 172.16.0.0/12
-                      - cidr: 192.168.0.0/16
-                      - cidr: 10.0.0.0/8
-                  # 7. 允许公网访问
-                  - action: allow
-                    to:
-                      - cidr: 0.0.0.0/0
-          - SandboxNamespace:
-              Ref: SandboxNamespace
-            VSwitchCidr1:
-              Fn::If:
-                - CreateNewVpcCondition
-                - Ref: VSwitchCidrBlock1
-                - Fn::Jq:
-                    - First
-                    - .[0].CidrBlock
-                    - Fn::GetAtt:
-                        - BusinessVSwitch1DataSource
-                        - VSwitches
-            VSwitchCidr2:
-              Fn::If:
-                - CreateNewVpcCondition
-                - Ref: VSwitchCidrBlock2
-                - Fn::Jq:
-                    - First
-                    - .[0].CidrBlock
-                    - Fn::GetAtt:
-                        - BusinessVSwitch2DataSource
-                        - VSwitches
+      YamlContent: |
+        apiVersion: network.alibabacloud.com/v1alpha1
+        kind: GlobalTrafficPolicy
+        metadata:
+          name: openclaw-global-policy
+        spec:
+          egress:
+            rules:
+              - action: deny
+                to:
+                  - cidr: 100.100.100.200/32
+              - action: allow
+                to:
+                  - service:
+                      name: kube-dns
+                      namespace: kube-system
+              - action: deny
+                to:
+                  - cidr: 192.168.0.0/16
+                  - cidr: 172.16.0.0/12
+                  - cidr: 10.0.0.0/8
+                  - cidr: 100.64.0.0/10
+              - action: allow
+                to:
+                  - cidr: 0.0.0.0/0
+          ingress:
+            rules:
+              - action: allow
+                from:
+                  - service:
+                      name: sandbox-manager
+                      namespace: sandbox-system
+              - action: deny
+                from:
+                  - cidr: 0.0.0.0/0
+          priority: 500
+          selector:
+            matchLabels:
+              app: openclaw
   # ==================== OpenClaw SandboxSet ====================
   OpenClawSandboxSet:
     Type: ALIYUN::CS::ClusterApplication
@@ -2103,7 +2057,6 @@ Resources:
       - ClusterAppliaction
       - AddonSleep
       - GlobalTrafficPolicyApplication
-      - OpenClawTrafficPolicyApplication
     Properties:
       DefaultNamespace:
         Ref: SandboxNamespace
@@ -2123,18 +2076,19 @@ Resources:
               persistentContents:
                 - filesystem
               replicas: ${OpenClawReplicas}
+              runtimes:
+                - name: agent-runtime
               template:
                 metadata:
                   labels:
                     app: openclaw
                     alibabacloud.com/acs: "true"
-                    alibabacloud.com/compute-class: agent-sandbox
-
                   annotations:
+                    image.alibabacloud.com/enable-image-cache: "true"
                     network.alibabacloud.com/vswitch-ids: "${OpenClawVSwitchId1},${OpenClawVSwitchId2}"
                     network.alibabacloud.com/security-group-ids: "${OpenClawIsolationSecurityGroupId}"
-                    network.alibabacloud.com/enable-network-policy-agent: "true"
                     network.alibabacloud.com/network-policy-mode: "traffic-policy"
+                    network.alibabacloud.com/enable-network-policy-agent: "true"
                 spec:
                   automountServiceAccountToken: false
                   enableServiceLinks: false
@@ -2143,47 +2097,6 @@ Resources:
                   hostIPC: false
                   shareProcessNamespace: false
                   hostname: openclaw
-                  dnsPolicy: None
-                  dnsConfig:
-                    nameservers:
-                      - "100.100.2.136"
-                      - "100.100.2.138"
-                    searches:
-                      - default.svc.cluster.local
-                      - svc.cluster.local
-                      - cluster.local
-                    options:
-                      - name: ndots
-                        value: "5"
-                  nodeSelector:
-                    type: virtual-kubelet
-                  tolerations:
-                    - key: virtual-kubelet.io/provider
-                      operator: Exists
-                      effect: NoSchedule
-                  initContainers:
-                    - name: tini-copy
-                      image: kube-ai-registry.cn-shanghai.cr.aliyuncs.com/kube-ai/ubuntu-tini:krallin-ubuntu-tini-latest
-                      command: ["sh", "-c"]
-                      args:
-                        - |
-                          cp /usr/bin/tini /mnt/tini/tini
-                          chmod +x /mnt/tini/tini
-                      volumeMounts:
-                        - name: tini-volume
-                          mountPath: /mnt/tini
-                    - name: init
-                      image: "${InitImage}"
-                      command: [ "sh", "/workspace/entrypoint_inner.sh" ]
-                      volumeMounts:
-                        - name: envd-volume
-                          mountPath: /mnt/envd
-                      env:
-                        - name: ENVD_DIR
-                          value: /mnt/envd
-                        - name: __IGNORE_RESOURCE__
-                          value: "true"
-                      restartPolicy: Always
                   containers:
                     - name: gateway
                       image: "${OpenClawImage}"
@@ -2191,10 +2104,8 @@ Resources:
                         readOnlyRootFilesystem: false
                         runAsUser: 0
                         runAsGroup: 0
-                      command: ["/mnt/tini/tini", "--"]
+                      command: ["bash", "-c"]
                       args:
-                        - bash
-                        - -c
                         - "echo ${CmsGatewayStartScriptB64} | base64 -d | bash"
                       ports:
                         - name: gateway
@@ -2204,8 +2115,6 @@ Resources:
                           containerPort: 49983
                           protocol: TCP
                       env:
-                        - name: ENVD_DIR
-                          value: /mnt/envd
                         - name: OPENCLAW_CONFIG_DIR
                           value: /root/.openclaw
                         - name: KUBERNETES_SERVICE_PORT_HTTPS
@@ -2224,11 +2133,6 @@ Resources:
                           value: ""
                         - name: KUBERNETES_PORT_443_TCP_PORT
                           value: ""
-                      volumeMounts:
-                        - name: envd-volume
-                          mountPath: /mnt/envd
-                        - name: tini-volume
-                          mountPath: /mnt/tini
                       resources:
                         requests:
                           cpu: 2
@@ -2236,12 +2140,6 @@ Resources:
                         limits:
                           cpu: 2
                           memory: 4Gi
-                      lifecycle:
-                        postStart:
-                          exec:
-                            command:
-                              - bash
-                              - /mnt/envd/envd-run.sh
                       startupProbe:
                         exec:
                           command:
@@ -2249,14 +2147,9 @@ Resources:
                             - -e
                             - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
                         initialDelaySeconds: 1
-                        periodSeconds: 5
-                        failureThreshold: 60
+                        periodSeconds: 2
+                        failureThreshold: 150
                   terminationGracePeriodSeconds: 1
-                  volumes:
-                    - name: envd-volume
-                      emptyDir: { }
-                    - name: tini-volume
-                      emptyDir: { }
           - SandboxNamespace:
               Ref: SandboxNamespace
             OpenClawReplicas:
@@ -2281,11 +2174,6 @@ Resources:
               Fn::GetAtt:
                 - OpenClawIsolationSecurityGroup
                 - SecurityGroupId
-            InitImage:
-              Fn::Sub:
-                - registry-${RegionId}.ack.aliyuncs.com/acs/agent-runtime:v0.0.5
-                - RegionId:
-                    Ref: ALIYUN::Region
             CmsGatewayStartScriptB64:
               Fn::Base64Encode:
                 Fn::If:
@@ -2632,11 +2520,11 @@ Outputs:
       zh-cn: ACK 集群安全组ID
       en: ACK Cluster SecurityGroup ID
     Description:
-      zh-cn: ACK 集群安全组ID（normal类型，用于集群基础组件和 VirtualNode）
-      en: SecurityGroup ID for ACK cluster (normal type, used for cluster components and VirtualNode)
+      zh-cn: ACK 集群安全组ID（ACK 自动创建，通过 ClusterDataSource 查询）
+      en: SecurityGroup ID for ACK cluster (auto-created by ACK, queried via ClusterDataSource)
     Value:
       Fn::GetAtt:
-        - OpenClawSecurityGroup
+        - ClusterDataSource
         - SecurityGroupId
   OpenClawIsolationSecurityGroupId:
     Label:
