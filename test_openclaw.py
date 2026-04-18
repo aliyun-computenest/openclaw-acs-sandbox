@@ -9,6 +9,7 @@ import requests
 from string import Template
 from e2b_code_interpreter import Sandbox
 
+
 def main():
     print("Hello from openclaw-demo!")
     load_dotenv(override=True)
@@ -29,7 +30,7 @@ def main():
     GATEWAY_TOKEN = os.environ.get("GATEWAY_TOKEN", "clawdbot-mode-123456")
     DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "sk-****")
 
-    #渲染 openclaw-template.json 文件， 并将渲染后的文件覆盖沙盒中 /root/.openclaw/openclaw.json 的内容，触发openclaw重启更新配置
+    # 渲染 openclaw-template.json 文件， 并将渲染后的文件覆盖沙盒中 /root/.openclaw/openclaw.json 的内容，触发openclaw重启更新配置
     template_path = "openclaw_template.json"
     with open(template_path, "r") as f:
         template_content = f.read()
@@ -38,7 +39,7 @@ def main():
         GATEWAY_TOKEN=GATEWAY_TOKEN,
         DASHSCOPE_API_KEY=DASHSCOPE_API_KEY,
     )
-    
+
     sandbox.files.write("/root/.openclaw/openclaw.json", rendered_content)
     print("已将渲染后的配置写入沙盒 /root/.openclaw/openclaw.json")
 
@@ -88,9 +89,7 @@ def main():
     print(f"pause success: {pause_success}")  # pause 的结果. None 是预期值，如果有其他错误信息回返回
 
     # 步骤6: 重新连接 sandbox
-    # 等待 10秒让 sandbox 完全暂停
-    print("等待 60秒让 sandbox 完全暂停...")
-    time.sleep(60)
+    time.sleep(20)
     print("\n[步骤6] 重新连接 sandbox...")
     start_time = time.monotonic()
     sameSandbox = sandbox.connect(timeout=180)
@@ -99,6 +98,7 @@ def main():
     print(f"重新连接成功，Sandbox ID: {sameSandbox.sandbox_id}")
 
     print("\n所有步骤执行完毕!")
+
 
 if __name__ == "__main__":
     main()

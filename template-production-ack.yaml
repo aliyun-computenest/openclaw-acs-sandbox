@@ -787,6 +787,9 @@ Parameters:
           - ecs.r9i
           - ecs.c9a
           - ecs.c9ae
+    Description:
+      en: '<font color="red"><b>⚠️ Default: ecs.g7.2xlarge (8 vCPU, 32 GiB). Please select the instance type based on your actual workload requirements.</b></font>'
+      zh-cn: '<font color="red"><b>⚠️ 默认规格: ecs.g7.2xlarge（8 vCPU, 32 GiB）。请根据实际业务负载需求选择合适的实例规格。</b></font>'
     Label:
       en: Worker Instance Type
       zh-cn: Worker 节点实例规格
@@ -949,7 +952,7 @@ Parameters:
                 - ap-northeast-1
                 - us-east-1
               - ${RegionId}
-          Value: registry-${RegionId}.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
+          Value: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
         - Condition:
             Fn::Not:
               Fn::Contains:
@@ -962,7 +965,7 @@ Parameters:
                   - ap-northeast-1
                   - us-east-1
                 - ${RegionId}
-          Value: registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
+          Value: registry-cn-hangzhou-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
   EnablePublicIp:
     Type: Boolean
     Description:
@@ -2428,8 +2431,8 @@ Resources:
                       image: "${OpenClawImage}"
                       securityContext:
                         readOnlyRootFilesystem: false
-                        runAsUser: 0
-                        runAsGroup: 0
+                        runAsUser: 1000
+                        runAsGroup: 1000
                       command: ["bash", "-c"]
                       args:
                         - "echo ${CmsGatewayStartScriptB64} | base64 -d | bash"
