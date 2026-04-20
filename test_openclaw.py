@@ -1,5 +1,6 @@
-# ⚠️  WARNING: This script is for temporary testing/validation purposes only.
-#          DO NOT use in production environments. For cluster testing pod execution.
+# ⚠️  声明：本脚本仅用于测试场景临时验证，禁止用于生产环境。集群测试pod运行
+# WARNING: This script is for temporary testing/validation purposes only.
+#          DO NOT use in production environments.
 
 from dotenv import load_dotenv
 import os
@@ -8,12 +9,13 @@ import requests
 from string import Template
 from e2b_code_interpreter import Sandbox
 
+
 def main():
     print("Hello from openclaw-demo!")
     load_dotenv(override=True)
 
-    # Step 1: Create sandbox
-    print("\n[Step 1] Creating sandbox...")
+    # 步骤1: 创建 sandbox
+    print("\n[步骤1] 创建 sandbox...")
     start_time = time.monotonic()
     sandbox = Sandbox.create(
         'openclaw',
@@ -21,14 +23,14 @@ def main():
             "e2b.agents.kruise.io/never-timeout": "true"
         }
     )
-    print(f"Sandbox creation time: {time.monotonic() - start_time:.2f} seconds")
+    print(f"创建 sandbox 耗时: {time.monotonic() - start_time:.2f} 秒")
     print(f"Sandbox ID: {sandbox.sandbox_id}")
 
-    # Read GATEWAY_TOKEN, DASHSCOPE_API_KEY, EXTERNAL_ACCESS_DOMAIN from environment variables
+    # 基于环境变量中的 GATEWAY_TOKEN, DASHSCOPE_API_KEY, EXTERNAL_ACCESS_DOMAIN 读取
     GATEWAY_TOKEN = os.environ.get("GATEWAY_TOKEN", "clawdbot-mode-123456")
     DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "sk-****")
 
-    # Render openclaw-template.json file and overwrite /root/.openclaw/openclaw.json in sandbox to trigger openclaw restart and config update
+    # 渲染 openclaw-template.json 文件， 并将渲染后的文件覆盖沙盒中 /root/.openclaw/openclaw.json 的内容，触发openclaw重启更新配置
     template_path = "openclaw_template.json"
     with open(template_path, "r") as f:
         template_content = f.read()
@@ -37,16 +39,16 @@ def main():
         GATEWAY_TOKEN=GATEWAY_TOKEN,
         DASHSCOPE_API_KEY=DASHSCOPE_API_KEY,
     )
-    
-    sandbox.files.write("/root/.openclaw/openclaw.json", rendered_content)
-    print("Rendered configuration written to sandbox /root/.openclaw/openclaw.json")
 
-    # Wait a few seconds for service to start
-    print("Waiting 30 seconds for gateway to start...")
+    sandbox.files.write("/root/.openclaw/openclaw.json", rendered_content)
+    print("已将渲染后的配置写入沙盒 /root/.openclaw/openclaw.json")
+
+    # 等待几秒让服务启动
+    print("等待 30 秒让 gateway 启动...")
     time.sleep(30)
 
-    # Step 3: Wait for service to be ready
-    print("\n[Step 3] Waiting for service to be ready...")
+    # 步骤3: 等待服务就绪
+    print("\n[步骤3] 等待服务就绪...")
     host = sandbox.get_host(18789)
     base_url = f"https://{host}"
     print(f"base_url: {base_url}")
@@ -60,44 +62,43 @@ def main():
                 verify=False,
                 timeout=5
             )
-            print(f"Response status code: {response.status_code}")
+            print(f"响应状态码: {response.status_code}")
             if response.status_code == 200:
-                print("Service is ready!")
-                print(f"Response content: {response.text[:200]}...")  # Print first 200 characters
+                print("服务已就绪!")
+                print(f"响应内容: {response.text[:200]}...")  # 打印前200字符
                 ready = True
                 break
         except requests.ConnectionError as e:
-            print(f"Connection error: {e}")
+            print(f"连接错误: {e}")
         except requests.Timeout:
-            print("Request timeout, continuing to wait...")
+            print("请求超时，继续等待...")
         time.sleep(2)
         print("waiting...")
 
-    print(f"Total wait time: {time.monotonic() - start_time:.2f} seconds")
+    print(f"等待就绪总耗时: {time.monotonic() - start_time:.2f} 秒")
 
-    # Step 4: Wait for service to fully stabilize before pausing
-    print("\n[Step 4] Service is ready, waiting 10 seconds for sandbox to fully stabilize before pause...")
+    # 步骤4: 暂停前等待服务完全稳定
+    print("\n[步骤4] 服务已就绪，等待 10 秒让 sandbox 完全稳定后再 pause...")
     time.sleep(10)
 
-    # Step 5: Pause sandbox
-    print("\n[Step 5] Executing sandbox beta_pause...")
+    # 步骤5: 暂停 sandbox
+    print("\n[步骤5] 执行 sandbox beta_pause...")
     start_time = time.monotonic()
     pause_success = sandbox.beta_pause()
-    print(f"Pause time: {time.monotonic() - start_time:.2f} seconds")
-    print(f"pause success: {pause_success}")  # Pause result. None is expected value, error messages will be returned if any
+    print(f"pause 耗时: {time.monotonic() - start_time:.2f} 秒")
+    print(f"pause success: {pause_success}")  # pause 的结果. None 是预期值，如果有其他错误信息回返回
 
-    # Step 6: Reconnect to sandbox
-    # Wait 60 seconds for sandbox to fully pause
-    print("Waiting 60 seconds for sandbox to fully pause...")
-    time.sleep(60)
-    print("\n[Step 6] Reconnecting to sandbox...")
+    # 步骤6: 重新连接 sandbox
+    time.sleep(20)
+    print("\n[步骤6] 重新连接 sandbox...")
     start_time = time.monotonic()
     sameSandbox = sandbox.connect(timeout=180)
     connect_time = time.monotonic() - start_time
-    print(f"Connect time: {connect_time:.2f} seconds")
-    print(f"Reconnection successful, Sandbox ID: {sameSandbox.sandbox_id}")
+    print(f"connect 耗时: {connect_time:.2f} 秒")
+    print(f"重新连接成功，Sandbox ID: {sameSandbox.sandbox_id}")
 
-    print("\nAll steps completed!")
+    print("\n所有步骤执行完毕!")
+
 
 if __name__ == "__main__":
     main()
