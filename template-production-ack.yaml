@@ -2438,7 +2438,7 @@ Resources:
                         runAsGroup: 1000
                       command: ["bash", "-c"]
                       args:
-                        - "echo ${CmsGatewayStartScriptB64} | base64 -d | bash"
+                        - "${CmsGatewayStartScript}"
                       ports:
                         - name: gateway
                           containerPort: 18789
@@ -2512,49 +2512,46 @@ Resources:
               Fn::GetAtt:
                 - OpenClawIsolationSecurityGroup
                 - SecurityGroupId
-            CmsGatewayStartScriptB64:
-              Fn::Base64Encode:
-                Fn::If:
-                  - EnableCmsObservabilityCondition
-                  - Fn::Sub:
-                      - |
-                        set -eu
-                        # CMS 安装脚本（安装 openclaw-cms-plugin，自动写入 openclaw.json 配置）
-                        wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint "${Endpoint}" --x-arms-license-key "${LicenseKey}" --x-arms-project "${ArmsProject}" --x-cms-workspace "${WorkspaceName}" --serviceName "${ServiceName}" || true
-                        echo "=== Starting Gateway ==="
-                        exec node openclaw.mjs gateway run --allow-unconfigured
-                      - LicenseKey:
-                          Fn::Jq:
-                            - First
-                            - .AuthToken
-                            - Fn::GetAtt:
-                                - CmsServiceObservability
-                                - EntryPointInfo
-                        ArmsProject:
-                          Fn::Jq:
-                            - First
-                            - .Project
-                            - Fn::GetAtt:
-                                - CmsServiceObservability
-                                - EntryPointInfo
-                        WorkspaceName:
-                          Ref: CmsWorkspaceName
-                        ServiceName:
-                          Ref: CmsServiceName
-                        Endpoint:
-                          Fn::Sub:
-                            - 'https://${ArmsProject}.${RegionId}.log.aliyuncs.com/apm/trace/opentelemetry'
-                            - RegionId:
-                                Ref: ALIYUN::Region
-                              ArmsProject:
-                                Fn::Jq:
-                                  - First
-                                  - .Project
-                                  - Fn::GetAtt:
-                                      - CmsServiceObservability
-                                      - EntryPointInfo
-                  - |
-                    exec node openclaw.mjs gateway run --allow-unconfigured
+            CmsGatewayStartScript:
+              Fn::If:
+                - EnableCmsObservabilityCondition
+                - Fn::Sub:
+                    - |
+                      set -eu
+                      wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint ${Endpoint} --x-arms-license-key ${LicenseKey} --x-arms-project ${ArmsProject} --x-cms-workspace ${WorkspaceName} --serviceName ${ServiceName} || true
+                      exec node openclaw.mjs gateway run --allow-unconfigured
+                    - LicenseKey:
+                        Fn::Jq:
+                          - First
+                          - .AuthToken
+                          - Fn::GetAtt:
+                              - CmsServiceObservability
+                              - EntryPointInfo
+                      ArmsProject:
+                        Fn::Jq:
+                          - First
+                          - .Project
+                          - Fn::GetAtt:
+                              - CmsServiceObservability
+                              - EntryPointInfo
+                      WorkspaceName:
+                        Ref: CmsWorkspaceName
+                      ServiceName:
+                        Ref: CmsServiceName
+                      Endpoint:
+                        Fn::Sub:
+                          - 'https://${ArmsProject}.${RegionId}.log.aliyuncs.com/apm/trace/opentelemetry'
+                          - RegionId:
+                              Ref: ALIYUN::Region
+                            ArmsProject:
+                              Fn::Jq:
+                                - First
+                                - .Project
+                                - Fn::GetAtt:
+                                    - CmsServiceObservability
+                                    - EntryPointInfo
+                - |
+                  exec node openclaw.mjs gateway run --allow-unconfigured
       WaitUntil:
         - Kind: SandboxSet
           ApiVersion: agents.kruise.io/v1alpha1
@@ -2620,7 +2617,7 @@ Resources:
                         runAsGroup: 0
                       command: ["bash", "-c"]
                       args:
-                        - "echo ${CmsGatewayStartScriptB64} | base64 -d | bash"
+                        - "${CmsGatewayStartScript}"
                       ports:
                         - name: gateway
                           containerPort: 18789
@@ -2669,49 +2666,46 @@ Resources:
               Ref: SandboxNamespace
             OpenClawImage:
               Ref: OpenClawImage
-            CmsGatewayStartScriptB64:
-              Fn::Base64Encode:
-                Fn::If:
-                  - EnableCmsObservabilityCondition
-                  - Fn::Sub:
-                      - |
-                        set -eu
-                        # CMS 安装脚本（安装 openclaw-cms-plugin，自动写入 openclaw.json 配置）
-                        wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint "${Endpoint}" --x-arms-license-key "${LicenseKey}" --x-arms-project "${ArmsProject}" --x-cms-workspace "${WorkspaceName}" --serviceName "${ServiceName}" || true
-                        echo "=== Starting Gateway ==="
-                        exec node openclaw.mjs gateway run --allow-unconfigured
-                      - LicenseKey:
-                          Fn::Jq:
-                            - First
-                            - .AuthToken
-                            - Fn::GetAtt:
-                                - CmsServiceObservability
-                                - EntryPointInfo
-                        ArmsProject:
-                          Fn::Jq:
-                            - First
-                            - .Project
-                            - Fn::GetAtt:
-                                - CmsServiceObservability
-                                - EntryPointInfo
-                        WorkspaceName:
-                          Ref: CmsWorkspaceName
-                        ServiceName:
-                          Ref: CmsServiceName
-                        Endpoint:
-                          Fn::Sub:
-                            - 'https://${ArmsProject}.${RegionId}.log.aliyuncs.com/apm/trace/opentelemetry'
-                            - RegionId:
-                                Ref: ALIYUN::Region
-                              ArmsProject:
-                                Fn::Jq:
-                                  - First
-                                  - .Project
-                                  - Fn::GetAtt:
-                                      - CmsServiceObservability
-                                      - EntryPointInfo
-                  - |
-                    exec node openclaw.mjs gateway run --allow-unconfigured
+            CmsGatewayStartScript:
+              Fn::If:
+                - EnableCmsObservabilityCondition
+                - Fn::Sub:
+                    - |
+                      set -eu
+                      wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint ${Endpoint} --x-arms-license-key ${LicenseKey} --x-arms-project ${ArmsProject} --x-cms-workspace ${WorkspaceName} --serviceName ${ServiceName} || true
+                      exec node openclaw.mjs gateway run --allow-unconfigured
+                    - LicenseKey:
+                        Fn::Jq:
+                          - First
+                          - .AuthToken
+                          - Fn::GetAtt:
+                              - CmsServiceObservability
+                              - EntryPointInfo
+                      ArmsProject:
+                        Fn::Jq:
+                          - First
+                          - .Project
+                          - Fn::GetAtt:
+                              - CmsServiceObservability
+                              - EntryPointInfo
+                      WorkspaceName:
+                        Ref: CmsWorkspaceName
+                      ServiceName:
+                        Ref: CmsServiceName
+                      Endpoint:
+                        Fn::Sub:
+                          - 'https://${ArmsProject}.${RegionId}.log.aliyuncs.com/apm/trace/opentelemetry'
+                          - RegionId:
+                              Ref: ALIYUN::Region
+                            ArmsProject:
+                              Fn::Jq:
+                                - First
+                                - .Project
+                                - Fn::GetAtt:
+                                    - CmsServiceObservability
+                                    - EntryPointInfo
+                - |
+                  exec node openclaw.mjs gateway run --allow-unconfigured
             OpenClawVSwitchId1:
               Fn::If:
                 - CreateNewVpcCondition
