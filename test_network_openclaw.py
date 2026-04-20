@@ -151,7 +151,7 @@ def create_sandbox(label):
 
 def get_instance_ip(sandbox, label):
     """获取实例的内网 IP 地址"""
-    result = sandbox.commands.run("hostname -I", timeout=10)
+    result = sandbox.commands.run("hostname -I", timeout=10, user="node")
     if result.exit_code != 0:
         print(f"[{label}] 获取 IP 失败: {result.stderr}")
         return None
@@ -168,11 +168,11 @@ def upload_and_run_script(sandbox):
     """将 egress 网络隔离测试脚本写入实例并执行"""
     remote_path = "/tmp/test_network_isolation.sh"
     print(f"[上传] 写入测试脚本到实例: {remote_path}")
-    sandbox.files.write(remote_path, NETWORK_TEST_SCRIPT)
+    sandbox.files.write(remote_path, NETWORK_TEST_SCRIPT, user="node")
 
     print("[执行] 运行 egress 网络隔离测试脚本...")
     print("=" * 60)
-    result = sandbox.commands.run(f"bash {remote_path}", timeout=120)
+    result = sandbox.commands.run(f"bash {remote_path}", timeout=120, user="node")
     return result
 
 
@@ -190,7 +190,7 @@ def run_remote_test(sandbox, test_name, command, expected_success, timeout=15):
     print(f"[预期] {'成功' if expected_success else '失败'}")
 
     try:
-        result = sandbox.commands.run(command, timeout=timeout)
+        result = sandbox.commands.run(command, timeout=timeout, user="node")
         actual_success = result.exit_code == 0
         print(f"[输出] {result.stdout}")
         if result.stderr:
@@ -363,10 +363,6 @@ def main():
     else:
         print("❌ 存在失败项，请检查上方输出")
         sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
 
 
 if __name__ == "__main__":
