@@ -207,6 +207,10 @@ Parameters:
       - eu-central-1a
       - eu-central-1b
       - eu-central-1c
+      - ap-northeast-1a
+      - ap-northeast-1b
+      - ap-northeast-1c
+      - ap-northeast-1e
     AssociationPropertyMetadata:
       ExclusiveTo:
         - ZoneId2
@@ -254,6 +258,10 @@ Parameters:
       - eu-central-1a
       - eu-central-1b
       - eu-central-1c
+      - ap-northeast-1a
+      - ap-northeast-1b
+      - ap-northeast-1c
+      - ap-northeast-1e
     AssociationPropertyMetadata:
       ExclusiveTo:
         - ZoneId1
@@ -2161,9 +2169,7 @@ Resources:
                 - EnableCmsObservabilityCondition
                 - Fn::Sub:
                     - |
-                      set -eu
-                      wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint ${Endpoint} --x-arms-license-key ${LicenseKey} --x-arms-project ${ArmsProject} --x-cms-workspace ${WorkspaceName} --serviceName ${ServiceName} || true
-                      exec node openclaw.mjs gateway run --allow-unconfigured
+                      wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint ${Endpoint} --x-arms-license-key ${LicenseKey} --x-arms-project ${ArmsProject} --x-cms-workspace ${WorkspaceName} --serviceName ${ServiceName} || true && exec node openclaw.mjs gateway run --allow-unconfigured
                     - LicenseKey:
                         Fn::Jq:
                           - First
@@ -2315,9 +2321,7 @@ Resources:
                 - EnableCmsObservabilityCondition
                 - Fn::Sub:
                     - |
-                      set -eu
-                      wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint ${Endpoint} --x-arms-license-key ${LicenseKey} --x-arms-project ${ArmsProject} --x-cms-workspace ${WorkspaceName} --serviceName ${ServiceName} || true
-                      exec node openclaw.mjs gateway run --allow-unconfigured
+                      wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint ${Endpoint} --x-arms-license-key ${LicenseKey} --x-arms-project ${ArmsProject} --x-cms-workspace ${WorkspaceName} --serviceName ${ServiceName} || true && exec node openclaw.mjs gateway run --allow-unconfigured
                     - LicenseKey:
                         Fn::Jq:
                           - First

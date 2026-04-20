@@ -173,6 +173,10 @@ Parameters:
       - eu-central-1a
       - eu-central-1b
       - eu-central-1c
+      - ap-northeast-1a
+      - ap-northeast-1b
+      - ap-northeast-1c
+      - ap-northeast-1e
     AssociationPropertyMetadata:
       ExclusiveTo:
         - ZoneId2
@@ -221,6 +225,10 @@ Parameters:
       - eu-central-1a
       - eu-central-1b
       - eu-central-1c
+      - ap-northeast-1a
+      - ap-northeast-1b
+      - ap-northeast-1c
+      - ap-northeast-1e
     AssociationPropertyMetadata:
       ExclusiveTo:
         - ZoneId1
@@ -723,33 +731,8 @@ Parameters:
     AssociationProperty: TextArea
     AssociationPropertyMetadata:
       DynamicValue:
-        # 支持的地域：北京、上海、广州、杭州、新加坡、香港、东京 - 使用对应地域的 ACK 内网镜像仓库
-        - Condition:
-            Fn::Contains:
-              - - cn-beijing
-                - cn-shanghai
-                - cn-guangzhou
-                - cn-hangzhou
-                - ap-southeast-1
-                - cn-hongkong
-                - ap-northeast-1
-                - us-east-1
-              - ${RegionId}
-          Value: registry-${RegionId}.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
-        # 其他地域 - 使用杭州公网镜像仓库
-        - Condition:
-            Fn::Not:
-              Fn::Contains:
-                - - cn-beijing
-                  - cn-shanghai
-                  - cn-guangzhou
-                  - cn-hangzhou
-                  - ap-southeast-1
-                  - cn-hongkong
-                  - ap-northeast-1
-                  - us-east-1
-                - ${RegionId}
-          Value: registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
+        - Value: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
+
   EnablePublicIp:
     Type: Boolean
     Description:
@@ -1087,24 +1070,21 @@ Resources:
             metadata:
               name: openclaw
               namespace: default
-              labels:
-                app: openclaw
             spec:
               persistentContents:
                 - filesystem
               replicas: ${OpenClawReplicas}
+              runtimes:
+                - name: agent-runtime
               template:
                 metadata:
                   labels:
-                    alibabacloud.com/acs: "true"
                     app: openclaw
-                    alibabacloud.com/compute-class: agent-sandbox
-
+                    alibabacloud.com/acs: "true"
                   annotations:
-                    ops.alibabacloud.com/pause-enabled: "true"
-                    k8s.aliyun.com/eci-network-policy-enable: "true"
-                    network.alibabacloud.com/enable-network-policy-agent: "true"
+                    image.alibabacloud.com/enable-image-cache: "true"
                     network.alibabacloud.com/network-policy-mode: "traffic-policy"
+                    network.alibabacloud.com/enable-network-policy-agent: "true"
                 spec:
                   automountServiceAccountToken: false
                   enableServiceLinks: false
@@ -1113,53 +1093,16 @@ Resources:
                   hostIPC: false
                   shareProcessNamespace: false
                   hostname: openclaw
-                  dnsPolicy: None
-                  dnsConfig:
-                    nameservers:
-                      - "100.100.2.136"
-                      - "100.100.2.138"
-                    searches:
-                      - default.svc.cluster.local
-                      - svc.cluster.local
-                      - cluster.local
-                    options:
-                      - name: ndots
-                        value: "5"
-                  initContainers:
-                    - name: tini-copy
-                      image: kube-ai-registry.cn-shanghai.cr.aliyuncs.com/kube-ai/ubuntu-tini:krallin-ubuntu-tini-latest
-                      command: ["sh", "-c"]
-                      args:
-                        - |
-                          cp /usr/bin/tini /mnt/tini/tini
-                          chmod +x /mnt/tini/tini
-                      volumeMounts:
-                        - name: tini-volume
-                          mountPath: /mnt/tini
-                    - name: init
-                      image: "${InitImage}"
-                      command: [ "sh", "/workspace/entrypoint_inner.sh" ]
-                      volumeMounts:
-                        - name: envd-volume
-                          mountPath: /mnt/envd
-                      env:
-                        - name: ENVD_DIR
-                          value: /mnt/envd
-                        - name: __IGNORE_RESOURCE__
-                          value: "true"
-                      restartPolicy: Always
                   containers:
                     - name: gateway
                       image: "${OpenClawImage}"
                       securityContext:
                         readOnlyRootFilesystem: false
-                        runAsUser: 0
-                        runAsGroup: 0
-                      command: ["/mnt/tini/tini", "--"]
+                        runAsUser: 1000
+                        runAsGroup: 1000
+                      command: ["bash", "-c"]
                       args:
-                        - bash
-                        - -c
-                        - "echo ${CmsGatewayStartScriptB64} | base64 -d | bash"
+                        - "${CmsGatewayStartScript}"
                       ports:
                         - name: gateway
                           containerPort: 18789
@@ -1168,8 +1111,158 @@ Resources:
                           containerPort: 49983
                           protocol: TCP
                       env:
-                        - name: ENVD_DIR
-                          value: /mnt/envd
+                        - name: OPENCLAW_CONFIG_DIR
+                          value: /home/node/.openclaw/openclaw.json
+                        - name: KUBERNETES_SERVICE_PORT_HTTPS
+                          value: ""
+                        - name: KUBERNETES_SERVICE_PORT
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP_PROTO
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP_ADDR
+                          value: ""
+                        - name: KUBERNETES_SERVICE_HOST
+                          value: ""
+                        - name: KUBERNETES_PORT
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP_PORT
+                          value: ""
+                      resources:
+                        requests:
+                          cpu: 2
+                          memory: 4Gi
+                        limits:
+                          cpu: 2
+                          memory: 4Gi
+                      startupProbe:
+                        exec:
+                          command:
+                            - node
+                            - -e
+                            - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+                        initialDelaySeconds: 1
+                        periodSeconds: 2
+                        failureThreshold: 150
+          - OpenClawReplicas:
+              Ref: OpenClawReplicas
+            OpenClawImage:
+              Ref: OpenClawImage
+            CmsGatewayStartScript:
+              Fn::If:
+                - EnableCmsObservabilityCondition
+                - Fn::Sub:
+                    - |
+                      wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint ${Endpoint} --x-arms-license-key ${LicenseKey} --x-arms-project ${ArmsProject} --x-cms-workspace ${WorkspaceName} --serviceName ${ServiceName} || true && exec node openclaw.mjs gateway run --allow-unconfigured
+                    - LicenseKey:
+                        Fn::Jq:
+                          - First
+                          - .AuthToken
+                          - Fn::GetAtt:
+                              - CmsServiceObservability
+                              - EntryPointInfo
+                      ArmsProject:
+                        Fn::Jq:
+                          - First
+                          - .Project
+                          - Fn::GetAtt:
+                              - CmsServiceObservability
+                              - EntryPointInfo
+                      WorkspaceName:
+                        Ref: CmsWorkspaceName
+                      ServiceName:
+                        Ref: CmsServiceName
+                      Endpoint:
+                        Fn::Sub:
+                          - 'https://${ArmsProject}.${RegionId}.log.aliyuncs.com/apm/trace/opentelemetry'
+                          - RegionId:
+                              Ref: ALIYUN::Region
+                            ArmsProject:
+                              Fn::Jq:
+                                - First
+                                - .Project
+                                - Fn::GetAtt:
+                                    - CmsServiceObservability
+                                    - EntryPointInfo
+                - |
+                  exec node openclaw.mjs gateway run --allow-unconfigured
+
+      WaitUntil:
+        # 等待 SandboxSet 至少有一个可用副本
+        # 超时 300 秒（5分钟）- 如果超时请检查：
+        # 1. 是否已开通镜像缓存白名单（403 错误）
+        # 2. 镜像是否存在/可拉取
+        # 3. Pod 资源配额是否充足
+        - Kind: SandboxSet
+          ApiVersion: agents.kruise.io/v1alpha1
+          Name: openclaw
+          Namespace: default
+          JsonPath: $.status.availableReplicas
+          Operator: NotEmpty
+          Timeout: 600
+          FirstMatch: true
+  # ==================== OpenClaw Advanced SandboxSet (with CSI, replicas=0) ====================
+  OpenClawAdvancedSandboxSet:
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn:
+      - OpenClawSandboxSet
+    Properties:
+      DefaultNamespace: default
+      ClusterId:
+        Fn::GetAtt:
+          - AckOrAcsCluster
+          - ClusterId
+      YamlContent:
+        Fn::Sub:
+          - |
+            apiVersion: agents.kruise.io/v1alpha1
+            kind: SandboxSet
+            metadata:
+              name: openclaw-advanced
+              namespace: default
+            spec:
+              persistentContents:
+                - filesystem
+              replicas: 0
+              runtimes:
+                - name: csi
+                - name: agent-runtime
+              template:
+                metadata:
+                  labels:
+                    app: openclaw
+                    alibabacloud.com/acs: "true"
+                  annotations:
+                    image.alibabacloud.com/enable-image-cache: "true"
+                    network.alibabacloud.com/network-policy-mode: "traffic-policy"
+                    network.alibabacloud.com/enable-network-policy-agent: "true"
+                spec:
+                  automountServiceAccountToken: false
+                  enableServiceLinks: false
+                  hostNetwork: false
+                  hostPID: false
+                  hostIPC: false
+                  shareProcessNamespace: false
+                  hostname: openclaw
+                  containers:
+                    - name: sandbox
+                      image: "${OpenClawImage}"
+                      securityContext:
+                        readOnlyRootFilesystem: false
+                        runAsUser: 0
+                        runAsGroup: 0
+                      command: ["bash", "-c"]
+                      args:
+                        - "${CmsGatewayStartScript}"
+                      ports:
+                        - name: gateway
+                          containerPort: 18789
+                          protocol: TCP
+                        - name: runtime
+                          containerPort: 49983
+                          protocol: TCP
+                      env:
                         - name: OPENCLAW_CONFIG_DIR
                           value: /root/.openclaw
                         - name: KUBERNETES_SERVICE_PORT_HTTPS
@@ -1188,11 +1281,6 @@ Resources:
                           value: ""
                         - name: KUBERNETES_PORT_443_TCP_PORT
                           value: ""
-                      volumeMounts:
-                        - name: envd-volume
-                          mountPath: /mnt/envd
-                        - name: tini-volume
-                          mountPath: /mnt/tini
                       resources:
                         requests:
                           cpu: 2
@@ -1200,12 +1288,6 @@ Resources:
                         limits:
                           cpu: 2
                           memory: 4Gi
-                      lifecycle:
-                        postStart:
-                          exec:
-                            command:
-                              - bash
-                              - /mnt/envd/envd-run.sh
                       startupProbe:
                         exec:
                           command:
@@ -1213,98 +1295,50 @@ Resources:
                             - -e
                             - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
                         initialDelaySeconds: 1
-                        periodSeconds: 5
-                        failureThreshold: 60
-                      # livenessProbe:
-                      #   exec:
-                      #     command:
-                      #       - node
-                      #       - -e
-                      #       - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
-                      #   initialDelaySeconds: 60
-                      #   periodSeconds: 30
-                      #   timeoutSeconds: 10
-                      # readinessProbe:
-                      #   exec:
-                      #     command:
-                      #       - node
-                      #       - -e
-                      #       - "require('http').get('http://127.0.0.1:18789/readyz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
-                      #   initialDelaySeconds: 15
-                      #   periodSeconds: 10
-                      #   timeoutSeconds: 5
+                        periodSeconds: 2
+                        failureThreshold: 150
+                      imagePullPolicy: IfNotPresent
                   terminationGracePeriodSeconds: 1
-                  volumes:
-                    - name: envd-volume
-                      emptyDir: { }
-                    - name: tini-volume
-                      emptyDir: { }
-          - OpenClawReplicas:
-              Ref: OpenClawReplicas
-            OpenClawImage:
+          - OpenClawImage:
               Ref: OpenClawImage
-            CmsGatewayStartScriptB64:
-              Fn::Base64Encode:
-                Fn::If:
-                  - EnableCmsObservabilityCondition
-                  - Fn::Sub:
-                      - |-
-                        set -eu
-                        # CMS 安装脚本（安装 openclaw-cms-plugin，自动写入 openclaw.json 配置）
-                        wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint "${Endpoint}" --x-arms-license-key "${LicenseKey}" --x-arms-project "${ArmsProject}" --x-cms-workspace "${WorkspaceName}" --serviceName "${ServiceName}" || true
-                        echo "=== Starting Gateway ==="
-                        exec node openclaw.mjs gateway run --allow-unconfigured
-                      - LicenseKey:
-                          Fn::Jq:
-                            - First
-                            - .AuthToken
-                            - Fn::GetAtt:
-                                - CmsServiceObservability
-                                - EntryPointInfo
-                        ArmsProject:
-                          Fn::Jq:
-                            - First
-                            - .Project
-                            - Fn::GetAtt:
-                                - CmsServiceObservability
-                                - EntryPointInfo
-                        WorkspaceName:
-                          Ref: CmsWorkspaceName
-                        ServiceName:
-                          Ref: CmsServiceName
-                        Endpoint:
-                          Fn::Sub:
-                            - 'https://${ArmsProject}.${RegionId}.log.aliyuncs.com/apm/trace/opentelemetry'
-                            - RegionId:
-                                Ref: ALIYUN::Region
-                              ArmsProject:
-                                Fn::Jq:
-                                  - First
-                                  - .Project
-                                  - Fn::GetAtt:
-                                      - CmsServiceObservability
-                                      - EntryPointInfo
-                  - 'exec node openclaw.mjs gateway run --allow-unconfigured'
-            InitImage:
-              Fn::Sub:
-                - registry-${RegionId}.ack.aliyuncs.com/acs/agent-runtime:v0.0.5
-                - RegionId:
-                    Ref: ALIYUN::Region
-
-      WaitUntil:
-        # 等待 SandboxSet 至少有一个可用副本
-        # 超时 300 秒（5分钟）- 如果超时请检查：
-        # 1. 是否已开通镜像缓存白名单（403 错误）
-        # 2. 镜像是否存在/可拉取
-        # 3. Pod 资源配额是否充足
-        - Kind: SandboxSet
-          ApiVersion: agents.kruise.io/v1alpha1
-          Name: openclaw
-          Namespace: default
-          JsonPath: $.status.availableReplicas
-          Operator: NotEmpty
-          Timeout: 600
-          FirstMatch: true
+            CmsGatewayStartScript:
+              Fn::If:
+                - EnableCmsObservabilityCondition
+                - Fn::Sub:
+                    - |
+                      wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint ${Endpoint} --x-arms-license-key ${LicenseKey} --x-arms-project ${ArmsProject} --x-cms-workspace ${WorkspaceName} --serviceName ${ServiceName} || true && exec node openclaw.mjs gateway run --allow-unconfigured
+                    - LicenseKey:
+                        Fn::Jq:
+                          - First
+                          - .AuthToken
+                          - Fn::GetAtt:
+                              - CmsServiceObservability
+                              - EntryPointInfo
+                      ArmsProject:
+                        Fn::Jq:
+                          - First
+                          - .Project
+                          - Fn::GetAtt:
+                              - CmsServiceObservability
+                              - EntryPointInfo
+                      WorkspaceName:
+                        Ref: CmsWorkspaceName
+                      ServiceName:
+                        Ref: CmsServiceName
+                      Endpoint:
+                        Fn::Sub:
+                          - 'https://${ArmsProject}.${RegionId}.log.aliyuncs.com/apm/trace/opentelemetry'
+                          - RegionId:
+                              Ref: ALIYUN::Region
+                            ArmsProject:
+                              Fn::Jq:
+                                - First
+                                - .Project
+                                - Fn::GetAtt:
+                                    - CmsServiceObservability
+                                    - EntryPointInfo
+                - |
+                  exec node openclaw.mjs gateway run --allow-unconfigured
   # ========== ALB Config Job（配置 HTTPS 443 监听器） ==========
   EditAlbConfigServiceAccount:
     Type: ALIYUN::CS::ClusterApplication
