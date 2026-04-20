@@ -642,8 +642,8 @@ Parameters:
       en: OpenClaw VSwitch CIDR Block 1
       zh-cn: OpenClaw 专用交换机网段 1
     Description:
-      zh-cn: OpenClaw 隔离网段（可用区1），与业务网段同属 192.168.0.0/16 主网段，使用 192.168.128.x 子网段实现隔离
-      en: OpenClaw isolated CIDR in Zone 1, same 192.168.0.0/16 main CIDR as business network, using 192.168.128.x subnet for isolation
+      zh-cn: OpenClaw 隔离网段（可用区1）。可使用 VPC 主网段内的子网（如 192.168.128.0/24），也可使用独立网段（如 10.10.0.0/18）作为 VPC 附加 CIDR，系统会自动判断并处理
+      en: OpenClaw isolated CIDR in Zone 1. Can be a subnet within VPC main CIDR (e.g. 192.168.128.0/24) or a separate CIDR block (e.g. 10.10.0.0/18) as VPC secondary CIDR, automatically handled by the template
     Default: 192.168.128.0/24
     Required: true
     AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
@@ -659,8 +659,8 @@ Parameters:
       en: OpenClaw VSwitch CIDR Block 2
       zh-cn: OpenClaw 专用交换机网段 2
     Description:
-      zh-cn: OpenClaw 隔离网段（可用区2），与业务网段同属 192.168.0.0/16 主网段，使用 192.168.129.x 子网段实现隔离
-      en: OpenClaw isolated CIDR in Zone 2, same 192.168.0.0/16 main CIDR as business network, using 192.168.129.x subnet for isolation
+      zh-cn: OpenClaw 隔离网段（可用区2）。可使用 VPC 主网段内的子网（如 192.168.129.0/24），也可使用独立网段（如 10.10.64.0/18）作为 VPC 附加 CIDR，系统会自动判断并处理
+      en: OpenClaw isolated CIDR in Zone 2. Can be a subnet within VPC main CIDR (e.g. 192.168.129.0/24) or a separate CIDR block (e.g. 10.10.64.0/18) as VPC secondary CIDR, automatically handled by the template
     Default: 192.168.129.0/24
     Required: true
     AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
@@ -676,8 +676,8 @@ Parameters:
       en: OpenClaw VSwitch CIDR Block 3
       zh-cn: OpenClaw 专用交换机网段 3
     Description:
-      zh-cn: OpenClaw 隔离网段（可用区3），与业务网段同属 192.168.0.0/16 主网段，使用 192.168.130.x 子网段实现隔离
-      en: OpenClaw isolated CIDR in Zone 3, same 192.168.0.0/16 main CIDR as business network, using 192.168.130.x subnet for isolation
+      zh-cn: OpenClaw 隔离网段（可用区3）。可使用 VPC 主网段内的子网（如 192.168.130.0/24），也可使用独立网段（如 10.10.128.0/18）作为 VPC 附加 CIDR，系统会自动判断并处理
+      en: OpenClaw isolated CIDR in Zone 3. Can be a subnet within VPC main CIDR (e.g. 192.168.130.0/24) or a separate CIDR block (e.g. 10.10.128.0/18) as VPC secondary CIDR, automatically handled by the template
     Default: 192.168.130.0/24
     Required: true
     AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
@@ -2372,6 +2372,9 @@ Resources:
                   - service:
                       name: sandbox-manager
                       namespace: sandbox-system
+                  - service:
+                      name: sandbox-gateway
+                      namespace: sandbox-system
               - action: deny
                 from:
                   - cidr: 0.0.0.0/0
@@ -2563,6 +2566,130 @@ Resources:
           Operator: NotEmpty
           Timeout: 600
           FirstMatch: true
+  # ==================== OpenClaw Advanced SandboxSet (with CSI, replicas=0) ====================
+  OpenClawAdvancedSandboxSet:
+    Type: ALIYUN::CS::ClusterApplication
+    DependsOn:
+      - OpenClawSandboxSet
+    Properties:
+      DefaultNamespace:
+        Ref: SandboxNamespace
+      ClusterId:
+        Fn::GetAtt:
+          - AckCluster
+          - ClusterId
+      YamlContent:
+        Fn::Sub:
+          - |
+            apiVersion: agents.kruise.io/v1alpha1
+            kind: SandboxSet
+            metadata:
+              name: openclaw-more-sbs
+              namespace: ${SandboxNamespace}
+            spec:
+              persistentContents:
+                - filesystem
+              replicas: 0
+              runtimes:
+                - name: csi
+                - name: agent-runtime
+              template:
+                metadata:
+                  labels:
+                    app: openclaw
+                    alibabacloud.com/acs: "true"
+                  annotations:
+                    image.alibabacloud.com/enable-image-cache: "true"
+                    network.alibabacloud.com/vswitch-ids: "${OpenClawVSwitchId1},${OpenClawVSwitchId2},${OpenClawVSwitchId3}"
+                    network.alibabacloud.com/security-group-ids: "${OpenClawIsolationSecurityGroupId}"
+                    network.alibabacloud.com/network-policy-mode: "traffic-policy"
+                    network.alibabacloud.com/enable-network-policy-agent: "true"
+                spec:
+                  automountServiceAccountToken: false
+                  enableServiceLinks: false
+                  hostNetwork: false
+                  hostPID: false
+                  hostIPC: false
+                  shareProcessNamespace: false
+                  hostname: openclaw
+                  containers:
+                    - name: sandbox
+                      image: "${OpenClawImage}"
+                      securityContext:
+                        readOnlyRootFilesystem: false
+                        runAsUser: 0
+                        runAsGroup: 0
+                      command: ["openclaw", "gateway", "run", "--allow-unconfigured"]
+                      ports:
+                        - name: gateway
+                          containerPort: 18789
+                          protocol: TCP
+                      env:
+                        - name: OPENCLAW_CONFIG_DIR
+                          value: /root/.openclaw
+                        - name: KUBERNETES_SERVICE_PORT_HTTPS
+                          value: ""
+                        - name: KUBERNETES_SERVICE_PORT
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP_PROTO
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP_ADDR
+                          value: ""
+                        - name: KUBERNETES_SERVICE_HOST
+                          value: ""
+                        - name: KUBERNETES_PORT
+                          value: ""
+                        - name: KUBERNETES_PORT_443_TCP_PORT
+                          value: ""
+                      resources:
+                        requests:
+                          cpu: 2
+                          memory: 4Gi
+                        limits:
+                          cpu: 2
+                          memory: 4Gi
+                      startupProbe:
+                        exec:
+                          command:
+                            - node
+                            - -e
+                            - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+                        initialDelaySeconds: 5
+                        periodSeconds: 2
+                        failureThreshold: 150
+                      imagePullPolicy: IfNotPresent
+                  terminationGracePeriodSeconds: 1
+          - SandboxNamespace:
+              Ref: SandboxNamespace
+            OpenClawImage:
+              Ref: OpenClawImage
+            OpenClawVSwitchId1:
+              Fn::If:
+                - CreateNewVpcCondition
+                - Fn::GetAtt:
+                    - OpenClawVSwitch1
+                    - VSwitchId
+                - Ref: OpenClawVSwitchId1
+            OpenClawVSwitchId2:
+              Fn::If:
+                - CreateNewVpcCondition
+                - Fn::GetAtt:
+                    - OpenClawVSwitch2
+                    - VSwitchId
+                - Ref: OpenClawVSwitchId2
+            OpenClawVSwitchId3:
+              Fn::If:
+                - CreateNewVpcCondition
+                - Fn::GetAtt:
+                    - OpenClawVSwitch3
+                    - VSwitchId
+                - Ref: OpenClawVSwitchId3
+            OpenClawIsolationSecurityGroupId:
+              Fn::GetAtt:
+                - OpenClawIsolationSecurityGroup
+                - SecurityGroupId
   EditAlbConfigServiceAccount:
     Type: ALIYUN::CS::ClusterApplication
     Properties:
