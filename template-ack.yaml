@@ -2224,7 +2224,7 @@ Resources:
             apiVersion: agents.kruise.io/v1alpha1
             kind: SandboxSet
             metadata:
-              name: openclaw-more-sbs
+              name: openclaw-advanced
               namespace: ${SandboxNamespace}
             spec:
               persistentContents:

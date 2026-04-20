@@ -226,27 +226,29 @@
 生产级 SandboxSet 配置示例：
 
 ```yaml
+
 apiVersion: agents.kruise.io/v1alpha1
 kind: SandboxSet
 metadata:
   name: openclaw
-  namespace: default
-  labels:
-    app: openclaw
+  namespace: ${SandboxNamespace}
 spec:
   persistentContents:
     - filesystem
-  replicas: 1
+  replicas: ${OpenClawReplicas}
+  runtimes:
+    - name: agent-runtime
   template:
     metadata:
       labels:
-        alibabacloud.com/acs: "true"
         app: openclaw
+        alibabacloud.com/acs: "true"
       annotations:
-        ops.alibabacloud.com/pause-enabled: "true"
-        k8s.aliyun.com/eci-network-policy-enable: "true"
-        network.alibabacloud.com/enable-network-policy-agent: "true"
+        image.alibabacloud.com/enable-image-cache: "true"
+        network.alibabacloud.com/vswitch-ids: "${OpenClawVSwitchId1},${OpenClawVSwitchId2},${OpenClawVSwitchId3}"
+        network.alibabacloud.com/security-group-ids: "${OpenClawIsolationSecurityGroupId}"
         network.alibabacloud.com/network-policy-mode: "traffic-policy"
+        network.alibabacloud.com/enable-network-policy-agent: "true"
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
@@ -255,52 +257,15 @@ spec:
       hostIPC: false
       shareProcessNamespace: false
       hostname: openclaw
-      dnsPolicy: None
-      dnsConfig:
-        nameservers:
-          - "100.100.2.136"
-          - "100.100.2.138"
-        searches:
-          - default.svc.cluster.local
-          - svc.cluster.local
-          - cluster.local
-        options:
-          - name: ndots
-            value: "5"
-      initContainers:
-        - name: tini-copy
-          image: kube-ai-registry.cn-shanghai.cr.aliyuncs.com/kube-ai/ubuntu-tini:krallin-ubuntu-tini-latest
-          command: ["sh", "-c"]
-          args:
-            - |
-              cp /usr/bin/tini /mnt/tini/tini
-              chmod +x /mnt/tini/tini
-          volumeMounts:
-            - name: tini-volume
-              mountPath: /mnt/tini
-        - name: init
-          image: registry-cn-hangzhou.ack.aliyuncs.com/acs/agent-runtime:v0.0.4
-          command: [ "sh", "/workspace/entrypoint_inner.sh" ]
-          volumeMounts:
-            - name: envd-volume
-              mountPath: /mnt/envd
-          env:
-            - name: ENVD_DIR
-              value: /mnt/envd
-            - name: __IGNORE_RESOURCE__
-              value: "true"
-          restartPolicy: Always
       containers:
         - name: gateway
-          image: "registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2"
+          image: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
           securityContext:
             readOnlyRootFilesystem: false
-            runAsUser: 0
-            runAsGroup: 0
-          command: ["/mnt/tini/tini", "--"]
+            runAsUser: 1000
+            runAsGroup: 1000
+          command: ["bash", "-c"]
           args:
-            - bash
-            - -c
             - "exec node openclaw.mjs gateway run --allow-unconfigured"
           ports:
             - name: gateway
@@ -310,10 +275,8 @@ spec:
               containerPort: 49983
               protocol: TCP
           env:
-            - name: ENVD_DIR
-              value: /mnt/envd
             - name: OPENCLAW_CONFIG_DIR
-              value: /root/.openclaw
+              value: /home/node/.openclaw/openclaw.json
             - name: KUBERNETES_SERVICE_PORT_HTTPS
               value: ""
             - name: KUBERNETES_SERVICE_PORT
@@ -330,11 +293,6 @@ spec:
               value: ""
             - name: KUBERNETES_PORT_443_TCP_PORT
               value: ""
-          volumeMounts:
-            - name: envd-volume
-              mountPath: /mnt/envd
-            - name: tini-volume
-              mountPath: /mnt/tini
           resources:
             requests:
               cpu: 2
@@ -342,45 +300,15 @@ spec:
             limits:
               cpu: 2
               memory: 4Gi
-          lifecycle:
-            postStart:
-              exec:
-                command:
-                  - bash
-                  - /mnt/envd/envd-run.sh
           startupProbe:
             exec:
               command:
                 - node
                 - -e
                 - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            failureThreshold: 60
-          # livenessProbe:
-          #   exec:
-          #     command:
-          #       - node
-          #       - -e
-          #       - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
-          #   initialDelaySeconds: 60
-          #   periodSeconds: 30
-          #   timeoutSeconds: 10
-          # readinessProbe:
-          #   exec:
-          #     command:
-          #       - node
-          #       - -e
-          #       - "require('http').get('http://127.0.0.1:18789/readyz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
-          #   initialDelaySeconds: 15
-          #   periodSeconds: 10
-          #   timeoutSeconds: 5
-      terminationGracePeriodSeconds: 1
-      volumes:
-        - name: envd-volume
-          emptyDir: { }
-        - name: tini-volume
-          emptyDir: { }
+            initialDelaySeconds: 1
+            periodSeconds: 2
+            failureThreshold: 150
 ```
 
 **重要字段说明**
