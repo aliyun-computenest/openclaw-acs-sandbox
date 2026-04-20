@@ -39,9 +39,8 @@ def main():
         DASHSCOPE_API_KEY=DASHSCOPE_API_KEY,
     )
 
-    sandbox.files.write("/root/.openclaw/openclaw.json", rendered_content)
-    print("Rendered configuration written to sandbox /root/.openclaw/openclaw.json")
-
+    sandbox.files.write("/home/node/.openclaw/openclaw.json", rendered_content, user="node")
+    print("file written to /home/node/.openclaw/openclaw.json")
     # Wait a few seconds for service to start
     print("Waiting 30 seconds for gateway to start...")
     time.sleep(30)
