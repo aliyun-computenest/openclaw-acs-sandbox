@@ -2633,7 +2633,7 @@ Resources:
                             - node
                             - -e
                             - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
-                        initialDelaySeconds: 5
+                        initialDelaySeconds: 1
                         periodSeconds: 2
                         failureThreshold: 150
                       imagePullPolicy: IfNotPresent
