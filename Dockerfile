@@ -8,6 +8,7 @@ WORKDIR /app
 COPY entrypoint.py /app/.internal/entrypoint.py
 COPY test_openclaw.py /app/test_openclaw.py
 COPY create_openclaw.py /app/create_openclaw.py
+COPY test_openclaw_network.py /app/test_openclaw_network.py
 COPY openclaw_template.json /app/openclaw_template.json
 
 RUN pip3 install --no-cache-dir python-dotenv requests e2b-code-interpreter e2b-desktop && \
