@@ -890,7 +890,7 @@ class OpenClawTestCLI:
                     "agents": {
                         "defaults": {
                             "model": {"primary": "bailian/qwen3.5-plus"},
-                            "workspace": "/root/.openclaw/workspace"
+                            "workspace": "/home/node/.openclaw/workspace"
                         }
                     },
                     "models": {
@@ -919,7 +919,7 @@ class OpenClawTestCLI:
                         "auth": {"mode": "token", "token": GATEWAY_TOKEN}
                     }
                 }, indent=4)
-                sandbox.files.write('/root/.openclaw/openclaw.json', openclaw_config)
+                sandbox.files.write('/home/node/.openclaw/openclaw.json', openclaw_config, user='node')
                 results.append({'test': 'config_write', 'pass': True, 'msg': 'openclaw.json written'})
             except Exception as e:
                 results.append({'test': 'config_write', 'pass': False, 'msg': str(e)[:200]})

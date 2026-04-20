@@ -2448,7 +2448,7 @@ Resources:
                           protocol: TCP
                       env:
                         - name: OPENCLAW_CONFIG_DIR
-                          value: /root/.openclaw
+                          value: /home/node/.openclaw/openclaw.json
                         - name: KUBERNETES_SERVICE_PORT_HTTPS
                           value: ""
                         - name: KUBERNETES_SERVICE_PORT
@@ -2481,7 +2481,6 @@ Resources:
                         initialDelaySeconds: 1
                         periodSeconds: 2
                         failureThreshold: 150
-                  terminationGracePeriodSeconds: 1
           - SandboxNamespace:
               Ref: SandboxNamespace
             OpenClawReplicas:
@@ -2619,10 +2618,15 @@ Resources:
                         readOnlyRootFilesystem: false
                         runAsUser: 0
                         runAsGroup: 0
-                      command: ["openclaw", "gateway", "run", "--allow-unconfigured"]
+                      command: ["bash", "-c"]
+                      args:
+                        - "echo ${CmsGatewayStartScriptB64} | base64 -d | bash"
                       ports:
                         - name: gateway
                           containerPort: 18789
+                          protocol: TCP
+                        - name: runtime
+                          containerPort: 49983
                           protocol: TCP
                       env:
                         - name: OPENCLAW_CONFIG_DIR
@@ -2665,6 +2669,49 @@ Resources:
               Ref: SandboxNamespace
             OpenClawImage:
               Ref: OpenClawImage
+            CmsGatewayStartScriptB64:
+              Fn::Base64Encode:
+                Fn::If:
+                  - EnableCmsObservabilityCondition
+                  - Fn::Sub:
+                      - |
+                        set -eu
+                        # CMS 安装脚本（安装 openclaw-cms-plugin，自动写入 openclaw.json 配置）
+                        wget -qO- https://arms-apm-cn-hangzhou-pre.oss-cn-hangzhou.aliyuncs.com/openclaw-cms-plugin/install-wget-nest.sh | bash -s -- --endpoint "${Endpoint}" --x-arms-license-key "${LicenseKey}" --x-arms-project "${ArmsProject}" --x-cms-workspace "${WorkspaceName}" --serviceName "${ServiceName}" || true
+                        echo "=== Starting Gateway ==="
+                        exec node openclaw.mjs gateway run --allow-unconfigured
+                      - LicenseKey:
+                          Fn::Jq:
+                            - First
+                            - .AuthToken
+                            - Fn::GetAtt:
+                                - CmsServiceObservability
+                                - EntryPointInfo
+                        ArmsProject:
+                          Fn::Jq:
+                            - First
+                            - .Project
+                            - Fn::GetAtt:
+                                - CmsServiceObservability
+                                - EntryPointInfo
+                        WorkspaceName:
+                          Ref: CmsWorkspaceName
+                        ServiceName:
+                          Ref: CmsServiceName
+                        Endpoint:
+                          Fn::Sub:
+                            - 'https://${ArmsProject}.${RegionId}.log.aliyuncs.com/apm/trace/opentelemetry'
+                            - RegionId:
+                                Ref: ALIYUN::Region
+                              ArmsProject:
+                                Fn::Jq:
+                                  - First
+                                  - .Project
+                                  - Fn::GetAtt:
+                                      - CmsServiceObservability
+                                      - EntryPointInfo
+                  - |
+                    exec node openclaw.mjs gateway run --allow-unconfigured
             OpenClawVSwitchId1:
               Fn::If:
                 - CreateNewVpcCondition

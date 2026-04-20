@@ -40,8 +40,8 @@ def main():
         DASHSCOPE_API_KEY=DASHSCOPE_API_KEY,
     )
 
-    sandbox.files.write("/root/.openclaw/openclaw.json", rendered_content)
-    print("已将渲染后的配置写入沙盒 /root/.openclaw/openclaw.json")
+    sandbox.files.write("/home/node/.openclaw/openclaw.json", rendered_content, user="node")
+    print("已将渲染后的配置写入沙盒 /home/node/.openclaw/openclaw.json")
 
     # 等待几秒让服务启动
     print("等待 30 秒让 gateway 启动...")
