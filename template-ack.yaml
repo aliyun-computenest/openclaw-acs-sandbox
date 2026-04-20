@@ -774,31 +774,8 @@ Parameters:
     AssociationProperty: TextArea
     AssociationPropertyMetadata:
       DynamicValue:
-        - Condition:
-            Fn::Contains:
-              - - cn-beijing
-                - cn-shanghai
-                - cn-guangzhou
-                - cn-hangzhou
-                - ap-southeast-1
-                - cn-hongkong
-                - ap-northeast-1
-                - us-east-1
-              - ${RegionId}
-          Value: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
-        - Condition:
-            Fn::Not:
-              Fn::Contains:
-                - - cn-beijing
-                  - cn-shanghai
-                  - cn-guangzhou
-                  - cn-hangzhou
-                  - ap-southeast-1
-                  - cn-hongkong
-                  - ap-northeast-1
-                  - us-east-1
-                - ${RegionId}
-          Value: registry-cn-hangzhou-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
+        - Value: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
+
   EnablePublicIp:
     Type: Boolean
     Description:
