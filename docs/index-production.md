@@ -443,8 +443,8 @@ export SSL_CERT_FILE=/path/to/ca-fullchain.pem
         DASHSCOPE_API_KEY=DASHSCOPE_API_KEY,
     )
     
-    sbx.files.write("/root/.openclaw/openclaw.json", rendered_content)
-    print("已将渲染后的配置写入沙盒 /root/.openclaw/openclaw.json")
+    sbx.files.write("/home/node/.openclaw/openclaw.json", rendered_content, user="node")
+    print("已将渲染后的配置写入沙盒 /home/node/.openclaw/openclaw.json")  
     print(f"sandbox: {sbx}")
     print(f"sandbox id: {sbx.sandbox_id}")
 ```
