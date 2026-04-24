@@ -4,7 +4,7 @@
             "model": {
                 "primary": "bailian/qwen3.5-plus"
             },
-            "workspace": "/root/.openclaw/workspace"
+            "workspace": "/home/node/.openclaw/workspace"
         }
     },
     "models": {
