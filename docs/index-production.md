@@ -433,7 +433,7 @@ export SSL_CERT_FILE=/path/to/ca-fullchain.pem
     DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "sk-****")
     
     
-    #渲染 openclaw-template.json 文件， 并将渲染后的文件覆盖沙盒中 /root/.openclaw/openclaw.json 的内容，触发openclaw重启更新配置
+    #渲染 openclaw-template.json 文件， 并将渲染后的文件覆盖沙盒中 /home/node/.openclaw/openclaw.json 的内容，触发openclaw重启更新配置
     template_path = "openclaw_template.json"
     with open(template_path, "r") as f:
         template_content = f.read()
