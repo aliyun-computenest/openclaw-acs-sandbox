@@ -150,7 +150,7 @@ Parameters:
     AssociationPropertyMetadata:
       Description:
         zh-cn: |
-          使用本服务前，请确保阅读<a href="https://computenest.console.aliyun.com/service/detail/cn-hangzhou/service-56531b838b524f5a83da/?isInstance=true" target="_blank">服务部署和使用文档</a>：
+          使用本服务前，请确保阅读服务部署和使用文档：
           <br/>
           1. 可选择进技术支持群，扫码进<a href="https://service-info-public.oss-cn-hangzhou.aliyuncs.com/openclaw-acs-tech-support.png" target="_blank">钉钉群</a>
           <br/>
@@ -171,46 +171,6 @@ Parameters:
     AssociationProperty: ALIYUN::ECS::Instance:ZoneId
     Default: Null
     Required: true
-    AllowedValues:
-      - cn-hangzhou-b
-      - cn-hangzhou-g
-      - cn-hangzhou-h
-      - cn-hangzhou-i
-      - cn-hangzhou-j
-      - cn-hangzhou-k
-      - cn-beijing-f
-      - cn-beijing-g
-      - cn-beijing-h
-      - cn-beijing-i
-      - cn-beijing-j
-      - cn-beijing-k
-      - cn-beijing-l
-      - cn-shanghai-b
-      - cn-shanghai-d
-      - cn-shanghai-e
-      - cn-shanghai-f
-      - cn-shanghai-g
-      - cn-shanghai-l
-      - cn-shanghai-m
-      - cn-shanghai-n
-      - cn-qingdao-b
-      - cn-qingdao-c
-      - cn-hongkong-b
-      - cn-hongkong-c
-      - cn-hongkong-d
-      - ap-southeast-1a
-      - ap-southeast-1b
-      - ap-southeast-1c
-      - ap-southeast-1d
-      - us-east-1a
-      - us-east-1b
-      - eu-central-1a
-      - eu-central-1b
-      - eu-central-1c
-      - ap-northeast-1a
-      - ap-northeast-1b
-      - ap-northeast-1c
-      - ap-northeast-1e
     AssociationPropertyMetadata:
       ExclusiveTo:
         - ZoneId2
@@ -222,46 +182,6 @@ Parameters:
     AssociationProperty: ALIYUN::ECS::Instance:ZoneId
     Default: Null
     Required: true
-    AllowedValues:
-      - cn-hangzhou-b
-      - cn-hangzhou-g
-      - cn-hangzhou-h
-      - cn-hangzhou-i
-      - cn-hangzhou-j
-      - cn-hangzhou-k
-      - cn-beijing-f
-      - cn-beijing-g
-      - cn-beijing-h
-      - cn-beijing-i
-      - cn-beijing-j
-      - cn-beijing-k
-      - cn-beijing-l
-      - cn-shanghai-b
-      - cn-shanghai-d
-      - cn-shanghai-e
-      - cn-shanghai-f
-      - cn-shanghai-g
-      - cn-shanghai-l
-      - cn-shanghai-m
-      - cn-shanghai-n
-      - cn-qingdao-b
-      - cn-qingdao-c
-      - cn-hongkong-b
-      - cn-hongkong-c
-      - cn-hongkong-d
-      - ap-southeast-1a
-      - ap-southeast-1b
-      - ap-southeast-1c
-      - ap-southeast-1d
-      - us-east-1a
-      - us-east-1b
-      - eu-central-1a
-      - eu-central-1b
-      - eu-central-1c
-      - ap-northeast-1a
-      - ap-northeast-1b
-      - ap-northeast-1c
-      - ap-northeast-1e
     AssociationPropertyMetadata:
       ExclusiveTo:
         - ZoneId1
@@ -1379,6 +1299,8 @@ Resources:
       NodePools:
         - NodePoolInfo:
             Name: default-nodepool
+          Count:
+            Ref: WorkerInstanceCount
           ScalingGroup:
             InstanceTypes:
               Ref: InstanceType
@@ -1403,8 +1325,6 @@ Resources:
             ZoneIds:
               - Ref: ZoneId1
               - Ref: ZoneId2
-            DesiredSize:
-              Ref: WorkerInstanceCount
           KubernetesConfig:
             Runtime: containerd
             RuntimeVersion: 1.6.28
@@ -1423,6 +1343,9 @@ Resources:
           - AckCluster
           - ClusterId
       InstalledIgnore: true
+      ZoneIds:
+        - Ref: ZoneId1
+        - Ref: ZoneId2
       Addons:
         - Name: alb-ingress-controller
           Config:
