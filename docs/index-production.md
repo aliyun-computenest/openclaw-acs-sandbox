@@ -154,6 +154,9 @@
  - 配置以下环境变量，为OpenClaw配置GATEWAY_TOKEN 以及访问百炼的API_KEY,若不执行此步骤，将会使用默认值
       GATEWAY_TOKEN的默认值为：clawdbot-mode-123456
       DASHSCOPE_API_KEY的默认值为：sk-****
+      国内百炼默认baseurl： https://dashscope.aliyuncs.com/compatible-mode/v1
+      国际站百炼默认baseurl: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+      该部分在openclaw_template.json中已配置
    ```bash
      export GATEWAY_TOKEN=****
      export DASHSCOPE_API_KEY=****    
