@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="计算巢是阿里云开放给企业应用服务商的服务管理平台。服务商能够在计算巢上发布私有化部署服务，为其客户提供云上软件一键部署的能力；同时也支持全托管模式的服务，赋能服务商托管其客户资源。">
+  <title>OpenClaw 企业版 - 生产级部署指南 - Aliyun 计算巢 x Demo</title>
+
+  <link rel="shortcut icon" href="../img/favicon.ico">
+
+  <link rel="stylesheet" href="https://unpkg.com/purecss@1.0.0/build/pure-min.css">
+  <link rel="stylesheet" href="../css/theme.css">
+  
+
+  
+
+  
+  
+
+  
+    <script src="../search/main.js"></script>
+  
+
+  
+
+  <script src="../js/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+
+<body>
+  <div class="container">
+    <div class="nav">
+      <div class="nav-inner">
+        <div class="logo">
+          <img src="./img/logo-2x.png">
+        </div>
+        <div class="nav-list">
+          <ul>
+          
+              <li><a href="#openclaw-">OpenClaw 企业版 - 生产级部署指南</a></li>
+              
+                  <li><a href="#_1">方案概览</a></li>
+                  
+                      <li class="li-h3"><a href="#_2">网络架构</a></li>
+                  
+                      <li class="li-h3"><a href="#_3">网络隔离策略</a></li>
+                  
+              
+                  <li><a href="#_4">前置条件</a></li>
+                  
+                      <li class="li-h3"><a href="#_5">开通服务</a></li>
+                  
+              
+                  <li><a href="#_6">部署步骤</a></li>
+                  
+                      <li class="li-h3"><a href="#1">步骤 1：创建服务实例</a></li>
+                  
+                      <li class="li-h3"><a href="#2">步骤 2：选择模板</a></li>
+                  
+                      <li class="li-h3"><a href="#3-vpc">步骤 3：配置 VPC 与可用区</a></li>
+                  
+                      <li class="li-h3"><a href="#4">步骤 4：配置管控交换机</a></li>
+                  
+                      <li class="li-h3"><a href="#5-openclaw">步骤 5：配置 OpenClaw 交换机</a></li>
+                  
+                      <li class="li-h3"><a href="#6">步骤 6：配置集群参数</a></li>
+                  
+                      <li class="li-h3"><a href="#7-sandbox">步骤 7：配置 Sandbox 参数</a></li>
+                  
+                      <li class="li-h3"><a href="#8-openclaw">步骤 8：配置 OpenClaw 参数</a></li>
+                  
+                      <li class="li-h3"><a href="#9-cms">步骤 9：配置 CMS 可观测性（可选）</a></li>
+                  
+                      <li class="li-h3"><a href="#10">步骤 10：确认并创建</a></li>
+                  
+              
+                  <li><a href="#_7">部署验证</a></li>
+                  
+                      <li class="li-h3"><a href="#_8">查看服务实例状态</a></li>
+                  
+              
+                  <li><a href="#_9">自动化测试 (无需配置本地环境和域名解析，可用于快速验证)</a></li>
+                  
+              
+                  <li><a href="#sandboxset">SandboxSet 配置</a></li>
+                  
+              
+                  <li><a href="#openclaw-web-ui">访问 OpenClaw Web UI</a></li>
+                  
+                      <li class="li-h3"><a href="#_10">配置域名解析</a></li>
+                  
+                      <li class="li-h3"><a href="#_11">域名格式</a></li>
+                  
+                      <li class="li-h3"><a href="#sandbox-pod">获取 Sandbox Pod 名称</a></li>
+                  
+              
+                  <li><a href="#demo">使用沙箱Demo</a></li>
+                  
+                      <li class="li-h3"><a href="#python-sdk">通过 Python SDK 创建</a></li>
+                  
+              
+                  <li><a href="#_14">网络隔离详解</a></li>
+                  
+                      <li class="li-h3"><a href="#trafficpolicy">TrafficPolicy</a></li>
+                  
+                      <li class="li-h3"><a href="#_15">企业安全组说明</a></li>
+                  
+                      <li class="li-h3"><a href="#_20">模板参数与网络隔离概念速查表</a></li>
+                  
+              
+                  <li><a href="#_21">可观测能力</a></li>
+                  
+                      <li class="li-h3"><a href="#openclaw">OpenClaw 日志</a></li>
+                  
+              
+                  <li><a href="#_22">时间预估</a></li>
+                  
+              
+                  <li><a href="#_23">常见问题</a></li>
+                  
+                      <li class="li-h3"><a href="#_24">部署失败如何排查？</a></li>
+                  
+                      <li class="li-h3"><a href="#kubeconfig">kubeconfig 无法连接？</a></li>
+                  
+                      <li class="li-h3"><a href="#pod">Pod 启动慢？</a></li>
+                  
+              
+          
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="content theme-github">
+      
+      <div class="content-inner">        
+        
+        <h1 id="openclaw-">OpenClaw 企业版 - 生产级部署指南</h1>
+<p>本文档介绍 OpenClaw 企业版<strong>生产级</strong>部署方案，适用于对网络隔离、安全性、高可用有严格要求的企业客户。</p>
+<h2 id="_1">方案概览</h2>
+<p>生产级部署基于 <strong>ACK 托管集群 + VirtualNode (ACS)</strong> 架构，支持 <strong>3 可用区高可用</strong>、<strong>Poseidon TrafficPolicy 网络隔离</strong>。</p>
+<ul>
+<li><strong>集群类型</strong>：ACK Pro 托管集群 + VirtualNode（Sandbox Pod 运行在 ACS 弹性算力上）</li>
+<li><strong>节点管理</strong>：ECS 节点池运行管控组件（sandbox-manager 等），Sandbox Pod 按需弹性</li>
+<li><strong>网络隔离</strong>：Poseidon TrafficPolicy  + 安全组多层隔离</li>
+<li><strong>高可用</strong>：3 可用区部署，6 交换机（3 业务 + 3 OpenClaw 隔离）</li>
+</ul>
+<h3 id="_2">网络架构</h3>
+<ul>
+<li><strong>3 可用区</strong>：跨 AZ 高可用部署</li>
+<li><strong>6 交换机</strong>：3 个业务交换机 + 3 个 OpenClaw 隔离交换机</li>
+<li><strong>独立 NAT 网关</strong>：OpenClaw 沙箱使用独立 NAT 网关和 EIP 出公网</li>
+<li><strong>ALB Ingress</strong>：通过 ALB 负载均衡器作为入口网关</li>
+<li><strong>PrivateZone</strong>：VPC 内泛域名解析</li>
+</ul>
+<h3 id="_3">网络隔离策略</h3>
+<p>生产级部署通过多层安全策略实现沙箱网络隔离：</p>
+<p><strong>第一层：企业级安全组</strong>
+<strong>第二层：Poseidon TrafficPolicy</strong>
+- 通过 GlobalTrafficPolicy实现 Kubernetes 层面的精细化网络策略</p>
+<p><strong>第三层：独立 NAT 网关</strong>
+- OpenClaw 沙箱使用独立的 NAT 网关和 EIP 出公网，与业务流量完全隔离</p>
+<h2 id="_4">前置条件</h2>
+<ol>
+<li>拥有阿里云账号，并已完成实名认证</li>
+<li>准备 TLS 证书文件（<code>fullchain.pem</code> 和 <code>privkey.pem</code>），用于 E2B API 的 HTTPS 访问</li>
+<li>给RAM 用户授权：
+   如果您使用的是RAM用户，需要授权RAM用户相关权限，才能够完成部署流程，参考<a href="https://help.aliyun.com/zh/compute-nest/security-and-compliance/grant-user-permissions-to-a-ram-user">授权文档</a>
+   部署此服务需要的权限策略包括两个系统权限策略和一个自定义权限策略, 请联系有管理员权限的用户对RAM用户授予以下权限：
+   <strong>系统权限策略：</strong></li>
+<li>AliyunComputeNestUserFullAccess：管理计算巢服务（ComputeNest）的用户侧权限，</li>
+<li>AliyunROSFullAccess：管理资源编排服务（ROS）的权限。
+   <strong>自定义权限策略：</strong>：<a href="https://github.com/aliyun-computenest/openclaw-acs-sandbox/blob/main/docs/policy_prod.json">policy_prod.json</a></li>
+</ol>
+<h3 id="_5">开通服务</h3>
+<p>如果您之前没有使用过相关云服务，在部署时会提示您先开通服务和创建相应服务角色，如下图所示，
+<img alt="img_17.png" src="../img_17.png" />
+此步骤需要的权限相对风险较高(需要云产品的管理员权限)，推荐您选用以下两种方式进行开通：
+注意：开通为一次性操作，仅第一次操作时需要开通。
+1. 联系有管理员权限的用户打开计算巢服务部署链接，让管理员用户按照提示进行开通。
+2. 联系有管理员权限的用户对RAM用户暂时授予管理员权限，RAM用户得到授权后进行开通，需要的权限策略如下。
+开通服务权限策略：<a href="https://github.com/aliyun-computenest/openclaw-acs-sandbox/blob/main/docs/open_policy.json">open_policy.json</a></p>
+<h2 id="_6">部署步骤</h2>
+<h3 id="1">步骤 1：创建服务实例</h3>
+<ol>
+<li>登录 <a href="https://computenest.console.aliyun.com">计算巢控制台</a></li>
+<li>找到 <strong>OpenClaw-ACS-Sandbox集群版</strong> 服务</li>
+<li>点击 <strong>创建服务实例</strong></li>
+</ol>
+<h3 id="2">步骤 2：选择模板</h3>
+<p>在创建页面顶部，选择 <strong>生产环境</strong> 模板：</p>
+<ul>
+<li><strong>测试环境</strong>：双可用区，适合快速验证</li>
+<li><strong>生产环境</strong>：3 可用区高可用，网络隔离，适合正式使用（如果需要双可用区生产环境需求，可选择“生产环境-双可用区版”模版）</li>
+</ul>
+<h3 id="3-vpc">步骤 3：配置 VPC 与可用区</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>说明</th>
+<th>默认值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>可用区 1/2/3</strong></td>
+<td>选择 3 个不同的可用区</td>
+<td>根据地域选择</td>
+</tr>
+<tr>
+<td><strong>选择已有/新建的专有网络</strong></td>
+<td>新建或使用已有 VPC</td>
+<td>新建专有网络</td>
+</tr>
+<tr>
+<td><strong>专有网络 IPv4 网段</strong></td>
+<td>VPC 主网段</td>
+<td><code>192.168.0.0/16</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="4">步骤 4：配置管控交换机</h3>
+<p>为 3 个可用区分别配置业务交换机网段，用于集群节点和管控组件。如选择已有VPC，且该VPC带有附加网段，请用VPC主网段对应的VSWitch：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>说明</th>
+<th>默认值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>管控交换机子网网段 1</strong></td>
+<td>可用区 1 的网段</td>
+<td><code>192.168.0.0/24</code></td>
+</tr>
+<tr>
+<td><strong>管控交换机子网网段 2</strong></td>
+<td>可用区 2 的网段</td>
+<td><code>192.168.1.0/24</code></td>
+</tr>
+<tr>
+<td><strong>管控交换机子网网段 3</strong></td>
+<td>可用区 3 的网段</td>
+<td><code>192.168.2.0/24</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="5-openclaw">步骤 5：配置 OpenClaw 交换机</h3>
+<p>为 OpenClaw 沙箱配置独立的交换机，实现与业务网络的物理隔离：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>说明</th>
+<th>默认值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>OpenClaw 专用交换机网段 1</strong></td>
+<td>可用区 1 的网段</td>
+<td><code>192.168.120.0/24</code></td>
+</tr>
+<tr>
+<td><strong>OpenClaw 专用交换机网段 2</strong></td>
+<td>可用区 2 的网段</td>
+<td><code>192.168.121.0/24</code></td>
+</tr>
+<tr>
+<td><strong>OpenClaw 专用交换机网段 3</strong></td>
+<td>可用区 3 的网段</td>
+<td><code>192.168.122.0/24</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>OpenClaw交换机支持附加网段。 3 个 OpenClaw 交换机要求互不相同</p>
+</blockquote>
+<h3 id="6">步骤 6：配置集群参数</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>说明</th>
+<th>默认值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Service CIDR</strong></td>
+<td>Kubernetes Service 网段</td>
+<td><code>172.16.0.0/16</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Service CIDR 不能与 VPC 网段和已有集群网段重复，创建后不可修改。</p>
+</blockquote>
+<h3 id="7-sandbox">步骤 7：配置 Sandbox 参数</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>说明</th>
+<th>是否必填</th>
+<th>默认值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Sandbox 访问域名</strong></td>
+<td>Sandbox API 的访问域名</td>
+<td>有默认值</td>
+<td>agent-vpc.infra</td>
+</tr>
+<tr>
+<td><strong>TLS 证书</strong></td>
+<td><code>fullchain.pem</code> 证书文件</td>
+<td><strong>必填</strong></td>
+<td></td>
+</tr>
+<tr>
+<td><strong>TLS 证书密钥</strong></td>
+<td><code>privkey.pem</code> 私钥文件</td>
+<td><strong>必填</strong></td>
+<td></td>
+</tr>
+<tr>
+<td><strong>是否配置内网域名解析</strong></td>
+<td>自动创建 PrivateZone</td>
+<td>建议开启</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><strong>PrivateZone 创建方式</strong></td>
+<td>新建或复用已有 PrivateZone（仅 ExistingVPC + 开启内网域名解析时显示）。若该 VPC 下已存在同名域名的 PrivateZone，模版会自动扫描出来，请选择"复用已有"</td>
+<td>默认新建</td>
+<td>新建</td>
+</tr>
+<tr>
+<td><strong>Sandbox API 访问密钥</strong></td>
+<td>访问 Sandbox 管理 API 的密钥</td>
+<td>选填</td>
+<td>自动生成</td>
+</tr>
+<tr>
+<td><strong>Sandbox Manager CPU</strong></td>
+<td>sandbox-manager CPU 资源</td>
+<td>默认即可</td>
+<td><code>2</code></td>
+</tr>
+<tr>
+<td><strong>Sandbox Manager 内存</strong></td>
+<td>sandbox-manager 内存资源</td>
+<td>默认即可</td>
+<td><code>4Gi</code></td>
+</tr>
+<tr>
+<td><strong>Sandbox Manager 调度到虚拟节点</strong></td>
+<td>是否将 Sandbox Manager 调度到虚拟节点（ACS 模式），启用后 Sandbox Manager 将运行在 Serverless 虚拟节点上</td>
+<td>默认开启</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><strong>为 ALB 指定独立交换机</strong></td>
+<td>开启后可为 ALB 单独指定交换机，与集群节点交换机隔离（仅 ExistingVPC 场景生效）</td>
+<td>选填</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>ALB 交换机ID（可用区1）</strong></td>
+<td>ALB 在可用区 1 使用的专用交换机，须属于同一 VPC</td>
+<td>选填（开启独立交换机后必填）</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>ALB 交换机ID（可用区2）</strong></td>
+<td>ALB 在可用区 2 使用的专用交换机，须属于同一 VPC</td>
+<td>选填（开启独立交换机后必填）</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="8-openclaw">步骤 8：配置 OpenClaw 参数</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>说明</th>
+<th>是否必填</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>OpenClaw 部署命名空间</strong></td>
+<td>SandboxSet（OpenClaw Pod）和 TestPod 所在的 Kubernetes 命名空间，sandbox-manager 固定部署在 sandbox-system 不受此参数影响</td>
+<td>默认 <code>default</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="9-cms">步骤 9：配置 CMS 可观测性（可选）</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>说明</th>
+<th>是否必填</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>启用 CMS 可观测性</strong></td>
+<td>开启后将自动接入阿里云云监控 2.0（ARMS APM），为 OpenClaw 沙箱提供链路追踪和性能监控能力</td>
+<td>默认关闭</td>
+</tr>
+<tr>
+<td><strong>CMS Workspace 名称</strong></td>
+<td>云监控 2.0 的工作空间名称，可在 <a href="https://arms.console.aliyun.com/">ARMS 控制台</a> 的环境管理中查看。系统会自动从该 Workspace 获取所需的 AuthToken 和 Project 信息，无需手动配置</td>
+<td>开启 CMS 后必填</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>💡 <strong>说明</strong>：启用 CMS 可观测性后，系统会通过 <code>DATASOURCE::CMS2::ServiceObservability</code> 自动查询 Workspace 的 EntryPointInfo（包括 AuthToken 和 Project），并注入到 OpenClaw 沙箱的启动脚本中，无需手动填写 ARMS 相关参数。</p>
+</blockquote>
+<h3 id="10">步骤 10：确认并创建</h3>
+<ol>
+<li>点击 <strong>下一步：确认订单</strong></li>
+<li>确认配置参数和费用</li>
+<li>点击 <strong>创建</strong> 开始部署</li>
+</ol>
+<blockquote>
+<p>部署预计耗时 <strong>15-22 分钟</strong>，请耐心等待。</p>
+</blockquote>
+<h2 id="_7">部署验证</h2>
+<h3 id="_8">查看服务实例状态</h3>
+<p>部署完成后，在计算巢控制台的 <strong>服务实例</strong> 页面可以看到实例状态变为 <strong>已部署</strong>。</p>
+<h2 id="_9">自动化测试 (无需配置本地环境和域名解析，可用于快速验证)</h2>
+<ol>
+<li>点击计算巢服务实例，找到实例内包含的ACK的集群。<img alt="img_8.png" src="../img_8.png" /></li>
+<li>点击集群容器组界面，找到acs-sandbox-test-pod，点击终端登录<img alt="img_9.png" src="../img_9.png" /></li>
+<li>
+<p>测试创建OpenClaw 沙箱</p>
+</li>
+<li>
+<p>配置以下环境变量，为OpenClaw配置GATEWAY_TOKEN 以及访问百炼的API_KEY,若不执行此步骤，将会使用默认值
+      GATEWAY_TOKEN的默认值为：clawdbot-mode-123456
+      DASHSCOPE_API_KEY的默认值为：sk-****
+      国内百炼默认baseurl： https://dashscope.aliyuncs.com/compatible-mode/v1
+      国际站百炼默认baseurl: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+      该部分在openclaw_template.json中已配置
+   <code>bash
+     export GATEWAY_TOKEN=****
+     export DASHSCOPE_API_KEY=****</code></p>
+</li>
+<li>执行 <code>python create_openclaw.py</code></li>
+<li>等待脚本完成，得到SandboxId，服务就绪后说明OpenClaw 启动成功，可以访问对应沙箱的OpenClaw Web UI</li>
+<li>测试创建、休眠、唤醒Openclaw 沙箱<ul>
+<li>执行 <code>python test_openclaw.py</code></li>
+</ul>
+</li>
+<li>等待脚本验证所有功能通过，日志中出现 <strong>"创建 sandbox 耗时"</strong> 即代表验证通过</li>
+</ol>
+<h2 id="sandboxset">SandboxSet 配置</h2>
+<p>生产级 SandboxSet 配置示例：</p>
+<pre><code class="language-yaml">
+apiVersion: agents.kruise.io/v1alpha1
+kind: SandboxSet
+metadata:
+  name: openclaw
+  namespace: ${SandboxNamespace}
+spec:
+  persistentContents:
+    - filesystem
+  replicas: ${OpenClawReplicas}
+  runtimes:
+    - name: agent-runtime
+  template:
+    metadata:
+      labels:
+        app: openclaw
+        alibabacloud.com/acs: &quot;true&quot;
+      annotations:
+        image.alibabacloud.com/enable-image-cache: &quot;true&quot;
+        network.alibabacloud.com/vswitch-ids: &quot;${OpenClawVSwitchId1},${OpenClawVSwitchId2},${OpenClawVSwitchId3}&quot;
+        network.alibabacloud.com/security-group-ids: &quot;${OpenClawIsolationSecurityGroupId}&quot;
+        network.alibabacloud.com/network-policy-mode: &quot;traffic-policy&quot;
+        network.alibabacloud.com/enable-network-policy-agent: &quot;true&quot;
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      hostNetwork: false
+      hostPID: false
+      hostIPC: false
+      shareProcessNamespace: false
+      hostname: openclaw
+      containers:
+        - name: gateway
+          image: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
+          securityContext:
+            readOnlyRootFilesystem: false
+            runAsUser: 1000
+            runAsGroup: 1000
+          command: [&quot;bash&quot;, &quot;-c&quot;]
+          args:
+            - &quot;exec node openclaw.mjs gateway run --allow-unconfigured&quot;
+          ports:
+            - name: gateway
+              containerPort: 18789
+              protocol: TCP
+            - name: runtime
+              containerPort: 49983
+              protocol: TCP
+          env:
+            - name: OPENCLAW_CONFIG_DIR
+              value: /home/node/.openclaw/openclaw.json
+            - name: KUBERNETES_SERVICE_PORT_HTTPS
+              value: &quot;&quot;
+            - name: KUBERNETES_SERVICE_PORT
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT_443_TCP
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT_443_TCP_PROTO
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT_443_TCP_ADDR
+              value: &quot;&quot;
+            - name: KUBERNETES_SERVICE_HOST
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT_443_TCP_PORT
+              value: &quot;&quot;
+          resources:
+            requests:
+              cpu: 2
+              memory: 4Gi
+            limits:
+              cpu: 2
+              memory: 4Gi
+          startupProbe:
+            exec:
+              command:
+                - node
+                - -e
+                - &quot;require('http').get('http://127.0.0.1:18789/healthz', r =&gt; process.exit(r.statusCode &lt; 400 ? 0 : 1)).on('error', () =&gt; process.exit(1))&quot;
+            initialDelaySeconds: 1
+            periodSeconds: 2
+            failureThreshold: 150
+</code></pre>
+<p><strong>重要字段说明</strong></p>
+<ul>
+<li><code>SandboxSet.spec.persistentContents: filesystem</code> — 在 pause/connect 的过程中只保留文件系统</li>
+<li><code>template.spec.automountServiceAccountToken: false</code> — Pod 不挂载 Service Account</li>
+<li><code>template.spec.enableServiceLinks: false</code> — Pod 不注入 Service 环境变量</li>
+<li><code>template.metadata.labels.alibabacloud.com/acs: "true"</code> — 使用 ACS 算力</li>
+<li><code>template.metadata.annotations.ops.alibabacloud.com/pause-enabled: "true"</code> — 支持 pause/connect 动作</li>
+<li><code>template.metadata.annotations.network.alibabacloud.com/enable-network-policy-agent: "true"</code> — 启用网络策略 Agent</li>
+<li><code>template.metadata.annotations.network.alibabacloud.com/network-policy-mode: "traffic-policy"</code> — 使用 Poseidon TrafficPolicy 模式实现网络隔离</li>
+</ul>
+<blockquote>
+<p>⚠️ 如果预期使用 Pause，<strong>一定不要设置</strong> liveness/readiness 的探针，避免在暂停期间的健康检查问题。</p>
+</blockquote>
+<p><strong>必要的修改</strong></p>
+<ul>
+<li><code>registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2</code> — 替换为客户自己构建的镜像</li>
+</ul>
+<p><strong>机制简要说明</strong></p>
+<p>通过在 Pod 启动 envd，来支持 E2B SDK 的服务端接口。通过 kubectl 创建上述资源，SandboxSet 创建完成后，可以看到沙箱已经处于可用状态。</p>
+<h2 id="openclaw-web-ui">访问 OpenClaw Web UI</h2>
+<h3 id="_10">配置域名解析</h3>
+<h4 id="dns">方式一：DNS 解析（生产环境）</h4>
+<ol>
+<li>获取 ALB 访问端点</li>
+<li>在 DNS 服务商处，将 ALB 端点以 <strong>CNAME</strong> 记录解析到对应域名</li>
+<li>如需内网访问，可通过 PrivateZone 添加内网域名解析</li>
+</ol>
+<h4 id="host-alb">方式二：本地 Host 配置（需开启ALB公网访问，仅用于临时快速验证）</h4>
+<ol>
+<li>获取 ALB 访问端点：在服务实例详情页查看 ALB 域名</li>
+<li>通过 <code>ping</code> 或 <code>dig</code> 获取 ALB 公网 IP</li>
+<li>配置 <code>/etc/hosts</code>：</li>
+</ol>
+<pre><code class="language-bash">sudo vim /etc/hosts
+# 添加以下内容（替换为实际的 ALB IP 和 Pod 名称）
+39.103.89.43 18789-default--openclaw-abc12.agent-vpc.infra
+39.103.89.43 api.agent-vpc.infra
+</code></pre>
+<h3 id="_11">域名格式</h3>
+<p>OpenClaw 沙箱通过 PrivateZone 泛域名解析 + ALB 路由实现访问，域名格式为：</p>
+<pre><code>&lt;port&gt;-&lt;namespace&gt;--&lt;pod-name&gt;.&lt;e2b-domain&gt;?token=&lt;gateway-token&gt;
+                 ↑↑
+              双连字符（重要！）
+</code></pre>
+<p><strong>参数说明</strong>：
+- <strong><code>port</code></strong>：OpenClaw Web UI 端口，固定为 <code>18789</code>
+- <strong><code>namespace</code></strong>：Pod 所在命名空间，默认为 <code>default</code>
+- <strong><code>pod-name</code></strong>：Sandbox Pod 名称，如 <code>openclaw-abc12</code>
+- <strong><code>e2b-domain</code></strong>：部署时配置的 E2B 域名
+- <strong><code>gateway-token</code></strong>：SandboxSet 中配置的 <code>GATEWAY_TOKEN</code> 值</p>
+<p><strong>示例 URL</strong>：</p>
+<pre><code>https://18789-default--openclaw-abc12.agent-vpc.infra?token=clawdbot-mode-123456
+</code></pre>
+<blockquote>
+<p>⚠️ namespace 和 pod-name 之间必须使用<strong>双连字符 <code>--</code></strong>，使用单连字符会导致 502 错误。</p>
+</blockquote>
+<h3 id="sandbox-pod">获取 Sandbox Pod 名称</h3>
+<pre><code class="language-bash">kubectl get pods -n default -l app=openclaw
+</code></pre>
+<h2 id="demo">使用沙箱Demo</h2>
+<p>可在集群的default命名空间的acs-sandbox-test-pod中执行相关demo测试</p>
+<h3 id="python-sdk">通过 Python SDK 创建</h3>
+<ol>
+<li>安装 E2B Python SDK</li>
+</ol>
+<pre><code class="language-bash">pip install e2b-code-interpreter
+</code></pre>
+<ol>
+<li>初始化客户端运行环境配置</li>
+</ol>
+<pre><code class="language-bash">export E2B_DOMAIN=your.domain
+export E2B_API_KEY=your-token
+# 如果使用了自签名证书，还需要配置可信CA证书
+export SSL_CERT_FILE=/path/to/ca-fullchain.pem
+</code></pre>
+<h4 id="_12">创建沙箱并配置用户信息</h4>
+<p>为用户配置的OpenClaw的GATEWAY_TOKEN 以及访问百炼的API_KEY,
+   <code>bash
+     export GATEWAY_TOKEN=****
+     export DASHSCOPE_API_KEY=****</code>
+为用户申请 Sandbox，并在 Sandbox 中配置个人信息。以下代码会读取acs-sandbox-test-pod中的 openclaw_template.json 配置模板，注入用户独立的 token 和 LLM 鉴权信息。</p>
+<p>示例模版也可参考</p>
+<pre><code class="language-json">{
+    &quot;agents&quot;: {
+        &quot;defaults&quot;: {
+            &quot;model&quot;: {
+                &quot;primary&quot;: &quot;bailian/qwen3.5-plus&quot;
+            },
+            &quot;workspace&quot;: &quot;/root/.openclaw/workspace&quot;
+        }
+    },
+    &quot;models&quot;: {
+        &quot;mode&quot;: &quot;merge&quot;,
+        &quot;providers&quot;: {
+            &quot;bailian&quot;: {
+                &quot;baseUrl&quot;: &quot;https://dashscope.aliyuncs.com/compatible-mode/v1&quot;,
+                &quot;apiKey&quot;: &quot;${DASHSCOPE_API_KEY}&quot;,
+                &quot;api&quot;: &quot;openai-completions&quot;,
+                &quot;models&quot;: [
+                    {
+                        &quot;id&quot;: &quot;qwen3.5-plus&quot;,
+                        &quot;name&quot;: &quot;通义千问&quot;,
+                        &quot;input&quot;: [
+                            &quot;text&quot;
+                        ],
+                        &quot;contextWindow&quot;: 1000000,
+                        &quot;maxTokens&quot;: 65536
+                    }
+                ]
+            }
+        }
+    },
+    &quot;commands&quot;: {
+        &quot;native&quot;: &quot;auto&quot;,
+        &quot;nativeSkills&quot;: &quot;auto&quot;,
+        &quot;restart&quot;: true,
+        &quot;ownerDisplay&quot;: &quot;raw&quot;
+    },
+    &quot;gateway&quot;: {
+        &quot;port&quot;: 18789,
+        &quot;bind&quot;: &quot;lan&quot;,
+        &quot;controlUi&quot;: {
+            &quot;allowedOrigins&quot;: [
+                &quot;*&quot;
+            ],
+            &quot;dangerouslyAllowHostHeaderOriginFallback&quot;: true,
+            &quot;allowInsecureAuth&quot;: true,
+            &quot;dangerouslyDisableDeviceAuth&quot;: true
+        },
+        &quot;auth&quot;: {
+            &quot;mode&quot;: &quot;token&quot;,
+            &quot;token&quot;: &quot;${GATEWAY_TOKEN}&quot;
+        }
+    }
+}
+</code></pre>
+<pre><code class="language-python">   # Import and patch the E2B SDK
+    import os
+    import requests
+    from string import Template
+    from e2b_code_interpreter import Sandbox
+
+    # 注意为用户配置 never timeout
+    sbx: Sandbox = Sandbox.create(template=&quot;openclaw-sbs&quot;, metadata={
+                                   &quot;e2b.agents.kruise.io/never-timeout&quot;: &quot;true&quot;
+                                 })
+    print(f&quot;sandbox id: {sbx.sandbox_id}&quot;)
+
+    # 基于环境变量中的 GATEWAY_TOKEN, DASHSCOPE_API_KEY, EXTERNAL_ACCESS_DOMAIN 读取
+    GATEWAY_TOKEN = os.environ.get(&quot;GATEWAY_TOKEN&quot;, &quot;clawdbot-mode-123456&quot;)
+    DASHSCOPE_API_KEY = os.environ.get(&quot;DASHSCOPE_API_KEY&quot;, &quot;sk-****&quot;)
+
+
+    #渲染 openclaw-template.json 文件， 并将渲染后的文件覆盖沙盒中 /home/node/.openclaw/openclaw.json 的内容，触发openclaw重启更新配置
+    template_path = &quot;openclaw_template.json&quot;
+    with open(template_path, &quot;r&quot;) as f:
+        template_content = f.read()
+
+    rendered_content = Template(template_content).safe_substitute(
+        GATEWAY_TOKEN=GATEWAY_TOKEN,
+        DASHSCOPE_API_KEY=DASHSCOPE_API_KEY,
+    )
+
+    sbx.files.write(&quot;/home/node/.openclaw/openclaw.json&quot;, rendered_content, user=&quot;node&quot;)
+    print(&quot;已将渲染后的配置写入沙盒 /home/node/.openclaw/openclaw.json&quot;)  
+    print(f&quot;sandbox: {sbx}&quot;)
+    print(f&quot;sandbox id: {sbx.sandbox_id}&quot;)
+</code></pre>
+<p>执行代码可以得到创建后返回的Sandbox对象，获取新创建Sandbox对象的详细信息</p>
+<pre><code class="language-python">print(f&quot;sandbox: {sbx}&quot;)
+print(f&quot;sandbox id: {sbx.sandbox_id}&quot;)
+&gt; 创建后返回的 Sandbox 对象中包含新创建 Sandbox 的详细信息。sandbox id 的命名格式为 `{Namespace}--{Sandbox Name}`，其中 `--` 之前为对应资源所处的 K8s 命名空间，之后为 Sandbox 的名称。
+
+</code></pre>
+<h4 id="_13">休眠与唤醒</h4>
+<p>可参考官方文档使用：https://help.aliyun.com/zh/cs/user-guide/hibernate-and-wake-up-the-agent-sandbox</p>
+<blockquote>
+<p>沙箱休眠成功后，沙箱的状态会变成休眠状态，对应的 Pod 也会消失。注意沙箱实例休眠期间，OpenClaw 服务将处于不可访问状态。</p>
+</blockquote>
+<h2 id="_14">网络隔离详解</h2>
+<h3 id="trafficpolicy">TrafficPolicy</h3>
+<p>TrafficPolicy 用于控制ACK集群中 Agent 类应用的网络访问。TrafficPolicy可以基于优先级实现多级网络策略，支持 CIDR、Service、FQDN 等多种匹配方式，精细管理 Pod 出入方向流量。</p>
+<p>请参考官方文档：<a href="https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/use-trafficpolicy-to-manage-agent-network-access">使用 TrafficPolicy 管理 Agent 网络访问</a></p>
+<h3 id="_15">企业安全组说明</h3>
+<p>OpenClaw 安全组用于控制 Sandbox Pod 的网络访问边界，需按以下网段分类理解：</p>
+<h4 id="_16">网段分类说明</h4>
+<table>
+<thead>
+<tr>
+<th>网段类型</th>
+<th>默认网段</th>
+<th>对应模板参数</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>管控网段</strong></td>
+<td><code>192.168.0.0/24</code>、<code>192.168.1.0/24</code>、<code>192.168.2.0/24</code></td>
+<td>管控交换机子网网段 1/2/3</td>
+<td>集群管控面 / 其他服务使用的交换机网段，sandbox-manager 默认部署在此网段下</td>
+</tr>
+<tr>
+<td><strong>OpenClaw 网段</strong></td>
+<td><code>192.168.120.0/24</code>、<code>192.168.121.0/24</code>、<code>192.168.122.0/24</code></td>
+<td>OpenClaw 专用交换机网段 1/2/3</td>
+<td>Agent Sandbox 所在的隔离交换机网段，需要拒绝以防止沙箱间互访</td>
+</tr>
+<tr>
+<td><strong>VPC 网段</strong></td>
+<td><code>192.168.0.0/16</code></td>
+<td>专有网络 IPv4 网段</td>
+<td>VPC 主网段，管控网段和 OpenClaw 网段均属于此范围</td>
+</tr>
+<tr>
+<td><strong>云产品网段</strong></td>
+<td><code>100.64.0.0/10</code></td>
+<td>-</td>
+<td>阿里云内部云产品通信网段</td>
+</tr>
+<tr>
+<td><strong>DNS 服务地址</strong></td>
+<td><code>100.100.2.136</code>、<code>100.100.2.138</code></td>
+<td>-</td>
+<td>阿里云 DNS 服务地址</td>
+</tr>
+<tr>
+<td><strong>私网网段</strong></td>
+<td><code>192.168.0.0/16</code>、<code>172.16.0.0/12</code>、<code>10.0.0.0/8</code></td>
+<td>-</td>
+<td>RFC 1918 私网地址段，默认拒绝以实现网络隔离</td>
+</tr>
+<tr>
+<td><strong>公网</strong></td>
+<td><code>0.0.0.0/0</code></td>
+<td>-</td>
+<td>公网出口，低优先级放行</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_17">组内连通策略</h4>
+<ul>
+<li><strong>组内隔离</strong>（Sandbox 之间不互通）</li>
+</ul>
+<h4 id="_18">入方向规则</h4>
+<table>
+<thead>
+<tr>
+<th>优先级</th>
+<th>动作</th>
+<th>源 IP 段</th>
+<th>网段类型</th>
+<th>端口</th>
+<th>协议</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>高</td>
+<td>允许</td>
+<td><code>192.168.0.0/24</code>、<code>192.168.1.0/24</code>、<code>192.168.2.0/24</code></td>
+<td>管控网段</td>
+<td>全部</td>
+<td>所有</td>
+<td>sandbox-manager 等管控组件访问 Sandbox</td>
+</tr>
+<tr>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>可按需添加应用或组件期望访问/拒绝的端口规则</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_19">出方向规则</h4>
+<table>
+<thead>
+<tr>
+<th>优先级</th>
+<th>动作</th>
+<th>目标 IP 段</th>
+<th>网段类型</th>
+<th>端口</th>
+<th>协议</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>高</td>
+<td>允许</td>
+<td><code>100.64.0.0/10</code></td>
+<td>云产品网段</td>
+<td>不限制</td>
+<td>所有</td>
+<td>访问阿里云内部云产品</td>
+</tr>
+<tr>
+<td>高</td>
+<td>允许</td>
+<td><code>192.168.0.0/24</code>、<code>192.168.1.0/24</code>、<code>192.168.2.0/24</code></td>
+<td>管控网段</td>
+<td>443、6443（API Server）、9082（Poseidon）</td>
+<td>TCP</td>
+<td>访问集群 API Server 和 Poseidon</td>
+</tr>
+<tr>
+<td>高</td>
+<td>允许</td>
+<td><code>192.168.0.0/24</code>、<code>192.168.1.0/24</code>、<code>192.168.2.0/24</code></td>
+<td>管控网段</td>
+<td>53（DNS）</td>
+<td>所有</td>
+<td>集群内 DNS 解析</td>
+</tr>
+<tr>
+<td>高</td>
+<td>允许</td>
+<td><code>100.100.2.136</code>、<code>100.100.2.138</code></td>
+<td>DNS 服务地址</td>
+<td>53（DNS）</td>
+<td>所有</td>
+<td>阿里云 DNS 服务</td>
+</tr>
+<tr>
+<td>高</td>
+<td>拒绝</td>
+<td><code>192.168.120.0/24</code>、<code>192.168.121.0/24</code>、<code>192.168.122.0/24</code></td>
+<td>OpenClaw 网段</td>
+<td>全部</td>
+<td>所有</td>
+<td><strong>禁止沙箱间互访</strong>，实现网络隔离</td>
+</tr>
+<tr>
+<td>中</td>
+<td>拒绝</td>
+<td><code>192.168.0.0/16</code>、<code>172.16.0.0/12</code>、<code>10.0.0.0/8</code></td>
+<td>私网网段</td>
+<td>全部</td>
+<td>所有</td>
+<td>拒绝访问其他私网资源</td>
+</tr>
+<tr>
+<td>低</td>
+<td>允许</td>
+<td><code>0.0.0.0/0</code></td>
+<td>公网</td>
+<td>全部</td>
+<td>所有</td>
+<td>放行公网出口（如访问外部 API）</td>
+</tr>
+<tr>
+<td>-</td>
+<td>允许</td>
+<td><code>192.168.0.0/24</code>、<code>192.168.1.0/24</code>、<code>192.168.2.0/24</code></td>
+<td>管控网段</td>
+<td>按需</td>
+<td>按需</td>
+<td>可选：访问集群内非 Agent 服务（如 LLM Server）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>注意</strong>：以上网段均为默认值（对应步骤 4、5 中的默认参数），如部署时修改了交换机网段，安全组规则中的 IP 段需同步调整。</p>
+</blockquote>
+<h3 id="_20">模板参数与网络隔离概念速查表</h3>
+<table>
+<thead>
+<tr>
+<th>模板参数</th>
+<th>对应概念</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VpcCidrBlock</code></td>
+<td>VPC 主网段</td>
+<td>安全组规则、TrafficPolicy egress allow（API Server/Poseidon）</td>
+</tr>
+<tr>
+<td><code>VSwitchCidrBlock1/2/3</code></td>
+<td>vsw-downstream（业务交换机）</td>
+<td>sandbox-manager、ALB、ECS 节点所在网段</td>
+</tr>
+<tr>
+<td><code>OpenClawVSwitchCidrBlock1/2/3</code></td>
+<td>vsw-openclaw（隔离交换机）</td>
+<td>Sandbox Pod 实际运行的网段</td>
+</tr>
+<tr>
+<td><code>OpenClawCidrBlock</code></td>
+<td>vsw-openclaw 汇总网段</td>
+<td>GlobalTrafficPolicy deny 规则、安全组规则</td>
+</tr>
+<tr>
+<td><code>ServiceCidr</code></td>
+<td>K8s Service 网段</td>
+<td>kube-dns、API Server ClusterIP</td>
+</tr>
+<tr>
+<td><code>OpenClawIsolationSecurityGroup</code></td>
+<td>隔离安全组（enterprise）</td>
+<td>Sandbox Pod 专用，Pod 间默认不互通</td>
+</tr>
+<tr>
+<td><code>OpenClawNatGateway</code> + <code>OpenClawNatEip</code></td>
+<td>upstream（独立 NAT）</td>
+<td>Sandbox Pod 出公网流量隔离</td>
+</tr>
+<tr>
+<td><code>OpenClawRouteTable</code></td>
+<td>独立路由表</td>
+<td>OpenClaw 交换机默认路由指向独立 NAT</td>
+</tr>
+<tr>
+<td><code>OpenClawPodNetworking</code></td>
+<td>PodNetworking CRD</td>
+<td>将 Pod 调度到隔离交换机 + 绑定隔离安全组</td>
+</tr>
+<tr>
+<td><code>GlobalTrafficPolicyApplication</code></td>
+<td>GlobalTrafficPolicy</td>
+<td>全局拒绝 OpenClaw 网段入站</td>
+</tr>
+<tr>
+<td><code>OpenClawTrafficPolicyApplication</code></td>
+<td>TrafficPolicy</td>
+<td>OpenClaw Pod 精细化 ingress/egress 控制</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_21">可观测能力</h2>
+<h3 id="openclaw">OpenClaw 日志</h3>
+<p>SLS k8s原生能力在ACK集群内通过 loongcollector 组件提供，通过CR的方式创建采集配置，对应的CRD资源名为ClusterAliyunPipelineConfig。</p>
+<p><img alt="img_16.png" src="../img_16.png" /></p>
+<p>SLS提供开箱即用的OpenClaw采集配置，可以通过SLS控制台访问OpenClaw日志，对应的SLS的Project为k8s-log-${ack集群id},
+- OpenClaw Runtime日志（网关 / 应用）
+  - 对应的 logstore 为 openclaw-runtime
+  - 对应的采集配置为 openclaw-runtime-config
+  - 对应的K8s集群中的CR名为 openclaw-runtime-config
+- OpenClaw Session 审计日志
+  - 对应的 logstore 为 openclaw-session
+  - 对应的采集配置为 openclaw-session-config
+  - 对应的K8s集群中的CR名为 openclaw-session-config</p>
+<p>针对OpenClaw日志，SLS内置仪表盘覆盖安全审计、成本分析、行为分析三个维度:
+- OpenClaw 行为分析大盘: 对 OpenClaw 的运行行为进行全量记录与分类统计
+- OpenClaw 审计大盘: 从行为总览、高危命令、提示词注入、数据外泄等维度展开，提供实时行为监控、威胁识别与事后溯源的完整能力
+- OpenClaw Token 分析大盘: 从整体概览、模型维度趋势、会话等维度展开，提供用量监控、成本分析与异常发现能力</p>
+<p><img alt="img_15.png" src="../img_15.png" /></p>
+<p>注意：
+内置采集配置仅针对demo镜像，自定义镜像的日志路径、容器过滤条件等可能有所不同，可以在ACK集群内通过修改对应的CR进行配置修正。</p>
+<h2 id="_22">时间预估</h2>
+<p>预估 20 分钟左右</p>
+<h2 id="_23">常见问题</h2>
+<h3 id="_24">部署失败如何排查？</h3>
+<ol>
+<li>在计算巢服务实例详情页查看部署日志</li>
+<li>进入 ROS 控制台查看 Stack 事件，找到第一个 <code>CREATE_FAILED</code> 事件</li>
+<li>根据 <code>StatusReason</code> 定位根因</li>
+</ol>
+<h3 id="kubeconfig">kubeconfig 无法连接？</h3>
+<p>如果获取的 kubeconfig 使用内网 IP 无法连接，需要为集群绑定 EIP 或使用 VPN 访问。</p>
+<h3 id="pod">Pod 启动慢？</h3>
+<p>SandboxSet 首次启动需要拉取镜像，约需 2-3 分钟。可通过以下命令查看进度：</p>
+<pre><code class="language-bash">kubectl describe pod -l app=openclaw -n default
+</code></pre>
+        
+      </div>
+
+      <div class="copyrights">© 2009-2022 Aliyun.com 版权所有</div>
+    </div>
+  </div>
+  
+  <!--
+  MkDocs version      : 1.6.1
+  Docs Build Date UTC : 2026-05-06 02:50:38.298350+00:00
+  -->
+</body>
+</html>

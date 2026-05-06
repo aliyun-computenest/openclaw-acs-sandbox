@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="计算巢是阿里云开放给企业应用服务商的服务管理平台。服务商能够在计算巢上发布私有化部署服务，为其客户提供云上软件一键部署的能力；同时也支持全托管模式的服务，赋能服务商托管其客户资源。">
+  <title>在ACS集群中使用 E2B 管理安全沙箱 - Aliyun 计算巢 x Demo</title>
+
+  <link rel="shortcut icon" href="img/favicon.ico">
+
+  <link rel="stylesheet" href="https://unpkg.com/purecss@1.0.0/build/pure-min.css">
+  <link rel="stylesheet" href="css/theme.css">
+  
+
+  
+
+  
+  
+
+  
+    <script src="search/main.js"></script>
+  
+
+  
+
+  <script src="js/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+
+<body>
+  <div class="container">
+    <div class="nav">
+      <div class="nav-inner">
+        <div class="logo">
+          <img src="./img/logo-2x.png">
+        </div>
+        <div class="nav-list">
+          <ul>
+          
+              <li><a href="#acs-e2b">在ACS集群中使用 E2B 管理安全沙箱</a></li>
+              
+                  <li><a href="#_1">概述</a></li>
+                  
+              
+                  <li><a href="#_2">前置准备</a></li>
+                  
+                      <li class="li-h3"><a href="#_3">准备域名</a></li>
+                  
+                      <li class="li-h3"><a href="#_4">获取自签名证书</a></li>
+                  
+                      <li class="li-h3"><a href="#_5">开通服务</a></li>
+                  
+                      <li class="li-h3"><a href="#ram">给RAM 用户授权</a></li>
+                  
+              
+                  <li><a href="#_6">部署流程</a></li>
+                  
+              
+                  <li><a href="#openclaw">OpenClaw沙箱定义说明</a></li>
+                  
+              
+          
+              <li><a href="#_7">服务部署验证</a></li>
+              
+                  <li><a href="#_8">自动化测试 (无需配置本地环境和域名解析，可用于快速验证)</a></li>
+                  
+              
+                  <li><a href="#_9">手动测试 (可选)</a></li>
+                  
+                      <li class="li-h3"><a href="#_10">配置域名的解析</a></li>
+                  
+                      <li class="li-h3"><a href="#demo">使用沙箱demo</a></li>
+                  
+              
+                  <li><a href="#openclaw-web-ui">访问 OpenClaw Web UI</a></li>
+                  
+                      <li class="li-h3"><a href="#_12">域名格式说明</a></li>
+                  
+                      <li class="li-h3"><a href="#sandbox-pod">获取 Sandbox Pod 名称</a></li>
+                  
+                      <li class="li-h3"><a href="#_13">本地访问配置</a></li>
+                  
+              
+                  <li><a href="#_14">可观测能力</a></li>
+                  
+                      <li class="li-h3"><a href="#openclaw_1">OpenClaw 日志</a></li>
+                  
+              
+          
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="content theme-github">
+      
+      <div class="content-inner">        
+        
+        <h1 id="acs-e2b">在ACS集群中使用 E2B 管理安全沙箱</h1>
+<h2 id="_1">概述</h2>
+<p>E2B 是一个流行的开源安全沙箱框架，提供了一套简单易用的 Python 与 JavaScript SDK 供用户对安全沙箱进行创建、查询、执行代码、请求端口等操作。 ack-sandbox-manager组件是一个兼容 E2B 协议的后端应用，使用户在任何 K8s 集群中一键搭建一个性能媲美原生 E2B 的沙箱基础设施。</p>
+<p>本服务提供了在ACS 集群中快速搭建安全沙箱的解决方案，支持使用 E2B 协议进行交互。</p>
+<p>本服务使用的Openclaw镜像来源于 OpenClaw官方镜像仓库，仅供demo使用</p>
+<h2 id="_2">前置准备</h2>
+<p>标准的 E2B 协议需要一个域名（E2B_DOMAIN）来指定后端服务。为此，您需要准备一个自己的域名。 E2B 客户端必须通过 HTTPS 协议请求后端，因此还需要为服务申请一个通配符证书。</p>
+<p>以下介绍了测试场景下的域名和证书准备步骤，生成的fullchain.pem和privkey.pem文件在后续部署环节会用到。</p>
+<h3 id="_3">准备域名</h3>
+<ul>
+<li>测试场景中，为了方便验证，可以使用测试域名，比如示例：agent-vpc.infra。</li>
+</ul>
+<h3 id="_4">获取自签名证书</h3>
+<p>通过脚本<a href="https://github.com/openkruise/agents/blob/master/hack/generate-certificates.sh">generate-certificate.sh</a> 创建自签名证书, 您可以通过以下命令查看脚本的使用方法。</p>
+<pre><code class="language-plaintext">$ bash generate-certificates.sh --help
+
+Usage: generate-certificates.sh [OPTIONS]
+
+Options:
+  -d, --domain DOMAIN     Specify certificate domain (default: your.domain.com)
+  -o, --output DIR        Specify output directory (default: .)
+  -D, --days DAYS         Specify certificate validity days (default: 365)
+  -h, --help              Show this help message
+
+Examples:
+  generate-certificates.sh -d myapp.your.domain.com
+  generate-certificates.sh --domain api.your.domain.com --days 730
+</code></pre>
+<p>生成证书的命令示例：</p>
+<pre><code class="language-plaintext">./generate-certificates.sh --domain agent-vpc.infra --days 730
+</code></pre>
+<p>完成证书生成后，您会得到以下文件：</p>
+<ul>
+<li>
+<p>fullchain.pem：服务器证书公钥</p>
+</li>
+<li>
+<p>privkey.pem：服务器证书私钥</p>
+</li>
+<li>
+<p>ca-fullchain.pem：CA 证书公钥</p>
+</li>
+<li>
+<p>ca-privkey.pem：CA 证书私钥 该脚本会同时生成单域名（your.domain）与泛域名（*.your.domain）证书，兼容原生 E2B 协议与 OpenKruise 定制 E2B 协议。</p>
+</li>
+</ul>
+<h3 id="_5">开通服务</h3>
+<p>如果您之前没有使用过相关云服务，在部署时会提示您先开通服务和创建相应服务角色，如下图所示，
+<img alt="img_17.png" src="img_17.png" />
+此步骤需要的权限相对风险较高(需要云产品的管理员权限)，推荐您选用以下两种方式进行开通：
+注意：开通为一次性操作，仅第一次操作时需要开通。
+1. 联系有管理员权限的用户打开计算巢服务部署链接，让管理员用户按照提示进行开通。
+2. 联系有管理员权限的用户对RAM用户暂时授予管理员权限，RAM用户得到授权后进行开通，需要的权限策略如下。
+开通服务权限策略：<a href="https://github.com/aliyun-computenest/openclaw-acs-sandbox/blob/main/docs/open_policy.json">open_policy.json</a></p>
+<h3 id="ram">给RAM 用户授权</h3>
+<p>如果您使用的是RAM用户，需要授权RAM用户相关权限，才能够完成部署流程，参考<a href="https://help.aliyun.com/zh/compute-nest/security-and-compliance/grant-user-permissions-to-a-ram-user">授权文档</a></p>
+<p>部署此服务需要的权限策略包括两个系统权限策略和一个自定义权限策略, 请联系有管理员权限的用户对RAM用户授予以下权限：
+ <strong>系统权限策略：</strong>
+- AliyunComputeNestUserFullAccess：管理计算巢服务（ComputeNest）的用户侧权限，
+- AliyunROSFullAccess：管理资源编排服务（ROS）的权限。
+ <strong>自定义权限策略：</strong>
+- 测试环境权限策略：<a href="https://github.com/aliyun-computenest/openclaw-acs-sandbox/blob/main/docs/policy_test.json">policy_test.json</a>
+- 生产环境权限策略：<a href="https://github.com/aliyun-computenest/openclaw-acs-sandbox/blob/main/docs/policy_prod.json">policy_prod.json</a></p>
+<h2 id="_6">部署流程</h2>
+<ol>
+<li>
+<p>打开计算巢服务<a href="https://computenest.console.aliyun.com/service/instance/create/cn-hangzhou?type=user&amp;ServiceId=service-47d7c54c78604e0bbe79">部署链接</a></p>
+</li>
+<li>
+<p>填写相关部署参数、选择部署地域、ACS集群的Service CIDR, 专有网络配置</p>
+<p><img alt="image.png" src="img_1.png" /></p>
+</li>
+<li>
+<p>填写E2B 域名配置，E2B的访问域名配置为上述前提准备阶段的域名，</p>
+<ol>
+<li>
+<p>TLS 证书选择fullchain.pem文件</p>
+</li>
+<li>
+<p>TLS 证书私钥选择privkey.pem文件   <img alt="img_7.png" src="img_7.png" /></p>
+</li>
+</ol>
+</li>
+<li>
+<p>会生成访问E2B API的 E2B_API_KEY</p>
+</li>
+<li>
+<p>sandbox-manager 组件默认的CPU和内存配置默认为2C, 4Gi, 可以按需调整</p>
+</li>
+<li>
+<p><strong>CMS 可观测性配置</strong>（可选）：</p>
+</li>
+<li><strong>启用 CMS 可观测性</strong>：开启后将自动接入阿里云云监控 2.0（ARMS APM），为 OpenClaw 沙箱提供链路追踪和性能监控能力。默认关闭</li>
+<li>
+<p><strong>CMS Workspace 名称</strong>：云监控 2.0 的工作空间名称。开启 CMS 可观测性后必填，可在 <a href="https://arms.console.aliyun.com/">ARMS 控制台</a> 的环境管理中查看。系统会自动从该 Workspace 获取所需的 AuthToken 和 Project 信息，无需手动配置</p>
+</li>
+<li>
+<p><strong>ALB 配置</strong>：支持以下两种模式：</p>
+</li>
+<li><strong>新建公网 ALB</strong>（默认）：自动创建一个公网 ALB，适合快速验证场景。如果需要内网 ALB，请关闭公网访问开关。<img alt="img_10.png" src="img_10.png" /></li>
+</ol>
+<p><strong>为 ALB 指定独立交换机（VSW）</strong>：默认情况下，ALB 会复用 ACS 集群所在的交换机。如果您希望 ALB 使用独立的交换机（例如生产环境中隔离网络流量），可以在 ALB 配置中指定独立的交换机 ID。指定独立 VSW 的注意事项
+<img alt="img_11.png" src="img_11.png" /></p>
+<ol>
+<li>
+<p>配置完成后，点击确认订单</p>
+</li>
+<li>
+<p>部署成功后，在服务实例的详情页也可以查看E2B_API_KEY、E2B_DOMAIN等信息 </p>
+</li>
+</ol>
+<p><img alt="image.png" src="img_8.png" /></p>
+<h2 id="openclaw">OpenClaw沙箱定义说明</h2>
+<p>计算巢默认 会通过以下 yaml 创建一个单副本的 OpenClaw SandboxSet预热池（相当于e2b的模版），后续如果自己构建了镜像，可以直接替换集群中的openclaw镜像。 若为了提升拉取速度，也可替换为内网镜像：registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.2</p>
+<pre><code class="language-yaml">apiVersion: agents.kruise.io/v1alpha1
+kind: SandboxSet
+metadata:
+  name: openclaw
+  namespace: ${SandboxNamespace}
+spec:
+  persistentContents:
+    - filesystem
+  replicas: ${OpenClawReplicas}
+  runtimes:
+    - name: agent-runtime
+  template:
+    metadata:
+      labels:
+        app: openclaw
+        alibabacloud.com/acs: &quot;true&quot;
+      annotations:
+        image.alibabacloud.com/enable-image-cache: &quot;true&quot;
+        network.alibabacloud.com/vswitch-ids: &quot;${OpenClawVSwitchId1},${OpenClawVSwitchId2},${OpenClawVSwitchId3}&quot;
+        network.alibabacloud.com/security-group-ids: &quot;${OpenClawIsolationSecurityGroupId}&quot;
+        network.alibabacloud.com/network-policy-mode: &quot;traffic-policy&quot;
+        network.alibabacloud.com/enable-network-policy-agent: &quot;true&quot;
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      hostNetwork: false
+      hostPID: false
+      hostIPC: false
+      shareProcessNamespace: false
+      hostname: openclaw
+      containers:
+        - name: gateway
+          image: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
+          securityContext:
+            readOnlyRootFilesystem: false
+            runAsUser: 1000
+            runAsGroup: 1000
+          command: [&quot;bash&quot;, &quot;-c&quot;]
+          args:
+            - &quot;exec node openclaw.mjs gateway run --allow-unconfigured&quot;
+          ports:
+            - name: gateway
+              containerPort: 18789
+              protocol: TCP
+            - name: runtime
+              containerPort: 49983
+              protocol: TCP
+          env:
+            - name: OPENCLAW_CONFIG_DIR
+              value: /home/node/.openclaw/openclaw.json
+            - name: KUBERNETES_SERVICE_PORT_HTTPS
+              value: &quot;&quot;
+            - name: KUBERNETES_SERVICE_PORT
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT_443_TCP
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT_443_TCP_PROTO
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT_443_TCP_ADDR
+              value: &quot;&quot;
+            - name: KUBERNETES_SERVICE_HOST
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT_443_TCP_PORT
+              value: &quot;&quot;
+          resources:
+            requests:
+              cpu: 2
+              memory: 4Gi
+            limits:
+              cpu: 2
+              memory: 4Gi
+          startupProbe:
+            exec:
+              command:
+                - node
+                - -e
+                - &quot;require('http').get('http://127.0.0.1:18789/healthz', r =&gt; process.exit(r.statusCode &lt; 400 ? 0 : 1)).on('error', () =&gt; process.exit(1))&quot;
+            initialDelaySeconds: 1
+            periodSeconds: 2
+            failureThreshold: 150
+</code></pre>
+<p><strong>重要字段说明</strong></p>
+<ul>
+<li><code>SandboxSet.spec.persistentContents: filesystem</code> — 在 pause/connect 的过程中只保留文件系统</li>
+<li><code>template.spec.automountServiceAccountToken: false</code> — Pod 不挂载 Service Account</li>
+<li><code>template.spec.enableServiceLinks: false</code> — Pod 不注入 Service 环境变量</li>
+<li><code>template.metadata.labels.alibabacloud.com/acs: "true"</code> — 使用 ACS 算力</li>
+<li><code>template.metadata.annotations.ops.alibabacloud.com/pause-enabled: "true"</code> — 支持 pause/connect 动作</li>
+<li><code>template.metadata.annotations.network.alibabacloud.com/enable-network-policy-agent: "true"</code> — 启用网络策略 Agent</li>
+<li><code>template.metadata.annotations.network.alibabacloud.com/network-policy-mode: "traffic-policy"</code> — 使用 Poseidon TrafficPolicy 模式实现网络隔离</li>
+</ul>
+<blockquote>
+<p>⚠️ 如果预期使用 Pause，<strong>一定不要设置</strong> liveness/readiness 的探针，避免在暂停期间的健康检查问题。</p>
+</blockquote>
+<p><img alt="image.png" src="img_6.png" /></p>
+<h1 id="_7">服务部署验证</h1>
+<p>部署完成后，会得到一个对应的ACS集群，ACS集群中在sandbox-system命名空间下有sandbox-manager的Deployment，用于管理沙箱。 通过以下流程验证E2B服务已经正常运行，并介绍沙箱使用Demo.
+该部分分为自动化测试和手动测试可选其中一种测试步骤验证核心功能，两种测试方式验证的功能一致，均包含沙箱创建，休眠和重新连接部分。</p>
+<h2 id="_8">自动化测试 (无需配置本地环境和域名解析，可用于快速验证)</h2>
+<ol>
+<li>点击计算巢服务实例，找到实例内包含的acs的集群。<img alt="img_8.png" src="img_8.png" /></li>
+<li>点击集群容器组界面，找到acs-sandbox-test-pod，点击终端登录<img alt="img_9.png" src="img_9.png" /></li>
+<li>测试创建OpenClaw 沙箱<ul>
+<li>配置以下环境变量，为OpenClaw配置GATEWAY_TOKEN 以及访问百炼的API_KEY,若不执行此步骤，将会使用默认值
+  GATEWAY_TOKEN的默认值为：clawdbot-mode-123456
+  DASHSCOPE_API_KEY的默认值为：sk-****
+   <code>bash
+ export GATEWAY_TOKEN=****
+ export DASHSCOPE_API_KEY=****</code></li>
+<li>执行 <code>python create_openclaw.py</code></li>
+<li>等待脚本完成，得到SandboxId，服务就绪后说明OpenClaw 启动成功，可以访问对应沙箱的OpenClaw Web UI，参考下文 访问 OpenClaw Web UI</li>
+</ul>
+</li>
+<li>测试创建、休眠、唤醒Openclaw 沙箱<ul>
+<li>执行 <code>python test_openclaw.py</code></li>
+<li>等待脚本验证所有功能通过</li>
+</ul>
+</li>
+</ol>
+<h2 id="_9">手动测试 (可选)</h2>
+<h3 id="_10">配置域名的解析</h3>
+<h4 id="host">本地配置Host: 用于快速验证</h4>
+<ol>
+<li>
+<p>获取ALB的访问端点：ack-sandbox-manager 集群中使用Alb作为Ingress，在服务实例详情页，可以找到ACS控制台的链接，点击链接查看sandbox-manager的网关，可以获取ALB的访问端点，如下图所示 </p>
+<p><img alt="image.png" src="img_2.png" /></p>
+</li>
+<li>
+<p>获取Alb端点对应的公网地址：本地通过ping ALB的访问端点得到公网Ip <code>ping alb-xxxxxx</code></p>
+</li>
+<li>
+<p>将ALB的公网地址和域名配置到本地host：<code>echo "ALB_PUBLIC_IP api.E2B_DOMAIN" &gt;&gt; /etc/hosts</code> 示例为： <code>xx.xxx.xx.xxx api.agent-vpc.infra</code></p>
+</li>
+<li>
+<p>配置完Host后，无需配置DNS解析，在本地就可以管理E2B沙箱，具体使用方式，参考“使用沙箱demo”章节。</p>
+</li>
+</ol>
+<h4 id="dns">配置DNS解析：用于生产环境</h4>
+<ol>
+<li>
+<p>获取ALB的访问端点： ack-sandbox-manager 集群中使用Alb作为Ingress，在服务实例详情页，可以到ACS控制台的链接，点击链接查看sandbox-manager的网关，可以获取ALB的访问端点，如下图所示 <img alt="image.png" src="img_2.png" /></p>
+</li>
+<li>
+<p>配置DNS解析： 请将Alb的访问端点 以 CNAME 记录类型解析到对应域名， <img alt="image.png" src="img_5.png" /></p>
+</li>
+<li>
+<p>如需通过内网访问，可以通过PrivateZone 为E2B 添加内网域名。(如果部署时选择了新建VPC, 已经为您自动配置了PrivateZone，后续只需要添加解析记录)【可选】</p>
+</li>
+<li>
+<p>验证E2B服务是否正常运行：替换xxxx为您前面指定的域名，返回值2xx表示e2b服务已运行,如果是自行签发的证书，需要指定fullchain.pem；或通过配置环境变量使用您本地的证书 【该动作为创建sandbox的动作】e2b使用的可以请自行替换 “admin-987654321"-&gt; 实际的key</p>
+</li>
+</ol>
+<pre><code class="language-yaml">curl --cacert fullchain.pem -X POST --location &quot;https://api.xxx/sandboxes&quot; \
+    -H &quot;Content-Type: application/json&quot; \
+    -H &quot;X-API-Key: admin-987654321&quot; \
+    -d '{
+          &quot;templateID&quot;: &quot;openclaw&quot;,
+          &quot;timeout&quot;: 300
+        }'
+</code></pre>
+<p>当返回结果的json中，存在 "sandboxID" 且 "state":"running"，可以认为E2B 服务已经正常运行，且在本地可以访问E2B服务</p>
+<ol>
+<li>测试连通性之后，在本地就可以管理E2B沙箱，具体使用方式，参考“使用沙箱demo”章节。</li>
+</ol>
+<h3 id="demo">使用沙箱demo</h3>
+<ol>
+<li>安装 E2B Python SDK</li>
+</ol>
+<pre><code class="language-bash">pip install e2b-code-interpreter
+</code></pre>
+<ol>
+<li>初始化客户端运行环境配置</li>
+</ol>
+<pre><code class="language-bash">export E2B_DOMAIN=your.domain
+export E2B_API_KEY=your-token
+# 如果使用了自签名证书，还需要配置可信CA证书
+export SSL_CERT_FILE=/path/to/ca-fullchain.pem
+</code></pre>
+<blockquote>
+<p>将 <code>your.domain</code> 替换为部署时配置的 E2B 域名，<code>your-token</code> 替换为服务实例详情页的 E2B_API_KEY。</p>
+</blockquote>
+<h4 id="_11">创建沙箱并配置用户信息</h4>
+<p>为用户配置的OpenClaw的GATEWAY_TOKEN 以及访问百炼的API_KEY,
+   <code>bash
+     export GATEWAY_TOKEN=****
+     export DASHSCOPE_API_KEY=****</code>
+为用户申请 Sandbox，并在 Sandbox 中配置个人信息。以下代码会读取 <a href="">openclaw_template.json</a> 配置模板，注入用户独立的 token 和 LLM 鉴权信息。</p>
+<pre><code class="language-python">   # Import and patch the E2B SDK
+    import os
+    import requests
+    from string import Template
+    from e2b_code_interpreter import Sandbox
+
+    # 注意为用户配置 never timeout
+    sbx: Sandbox = Sandbox.create(template=&quot;openclaw-sbs&quot;, metadata={
+                                   &quot;e2b.agents.kruise.io/never-timeout&quot;: &quot;true&quot;
+                                 })
+    print(f&quot;sandbox id: {sbx.sandbox_id}&quot;)
+
+    # 基于环境变量中的 GATEWAY_TOKEN, DASHSCOPE_API_KEY, EXTERNAL_ACCESS_DOMAIN 读取
+    GATEWAY_TOKEN = os.environ.get(&quot;GATEWAY_TOKEN&quot;, &quot;clawdbot-mode-123456&quot;)
+    DASHSCOPE_API_KEY = os.environ.get(&quot;DASHSCOPE_API_KEY&quot;, &quot;sk-****&quot;)
+
+
+    #渲染 openclaw-template.json 文件， 并将渲染后的文件覆盖沙盒中 /home/node/.openclaw/openclaw.json 的内容，触发openclaw重启更新配置
+    template_path = &quot;openclaw_template.json&quot;
+    with open(template_path, &quot;r&quot;) as f:
+        template_content = f.read()
+
+    rendered_content = Template(template_content).safe_substitute(
+        GATEWAY_TOKEN=GATEWAY_TOKEN,
+        DASHSCOPE_API_KEY=DASHSCOPE_API_KEY,
+    )
+    sbx.files.write(&quot;/home/node/.openclaw/openclaw.json&quot;, rendered_content, user=&quot;node&quot;)
+    print(&quot;已将渲染后的配置写入沙盒 /home/node/.openclaw/openclaw.json&quot;)  
+
+    print(f&quot;sandbox: {sbx}&quot;)
+    print(f&quot;sandbox id: {sbx.sandbox_id}&quot;)
+</code></pre>
+<p>执行代码可以得到创建后返回的Sandbox对象，获取新创建Sandbox对象的详细信息</p>
+<pre><code class="language-python">print(f&quot;sandbox: {sbx}&quot;)
+print(f&quot;sandbox id: {sbx.sandbox_id}&quot;)
+&gt; 创建后返回的 Sandbox 对象中包含新创建 Sandbox 的详细信息。sandbox id 的命名格式为 `{Namespace}--{Sandbox Name}`，其中 `--` 之前为对应资源所处的 K8s 命名空间，之后为 Sandbox 的名称。
+
+#### 休眠与唤醒
+
+当用户长时间不使用时，可以将对应 Sandbox 挂起，触发沙箱休眠。休眠期间，沙箱中文件系统等状态被冻结，ACS 不会收取 CPU、Memory 资源的费用，只会产生少量的存储成本。
+
+```python
+from e2b_code_interpreter import Sandbox
+
+# 通过 sandbox ID 连接到已存在的 sandbox
+sandbox_id = &quot;default--openclaw-52xbx&quot;  # 替换为你的实际 sandbox ID
+# 注意根据申请时的申请信息，配置timeout时间
+sbx = Sandbox.connect(sandbox_id, timeout=2592000)
+
+# 挂起Sandbox
+sbx.beta_pause()
+
+input(&quot;press ENTER to step&quot;)
+
+# 恢复被挂起的Sandbox，注意timeout配置
+sbx.connect(timeout=2592000)
+</code></pre>
+<blockquote>
+<p>沙箱休眠成功后，沙箱的状态会变成休眠状态，对应的 Pod 也会消失。注意沙箱实例休眠期间，OpenClaw 服务将处于不可访问状态。</p>
+</blockquote>
+<h2 id="openclaw-web-ui">访问 OpenClaw Web UI</h2>
+<p>创建并配置好 Sandbox 后，可以通过以下方式访问 OpenClaw Web UI.</p>
+<p><strong>注意</strong>：通过create_openclaw.py创建的sandbox才可以直接访问，sandboxset里的预热的sandbox无法直接访问，请参考create_openclaw里创建sandbox</p>
+<h3 id="_12">域名格式说明</h3>
+<p>OpenClaw 沙箱通过 PrivateZone 泛域名解析 + ALB 路由实现访问，域名格式为：
+<code>https://&lt;port&gt;-&lt;namespace&gt;--&lt;pod-name&gt;.&lt;e2b-domain&gt;?token=&lt;gateway-token&gt;
+                 ↑↑
+              双连字符（重要！）</code></p>
+<p><strong>参数说明：</strong>
+- <code>port</code>: OpenClaw Web UI 端口，固定为 <code>18789</code>
+- <code>namespace</code>: Pod 所在命名空间，默认为 <code>default</code>
+- <code>pod-name</code>: Sandbox Pod 名称，如 <code>openclaw-abc12</code>
+- <code>e2b-domain</code>: 部署时配置的 E2B 域名，如 <code>agent-vpc.infra</code>
+- <code>gateway-token</code>: SandboxSet 中配置的 <code>GATEWAY_TOKEN</code> 环境变量值</p>
+<p><strong>示例 URL：</strong></p>
+<pre><code>https://18789-default--openclaw-abc12.agent-vpc.infra?token=clawdbot-mode-123456
+</code></pre>
+<blockquote>
+<p>⚠️ <strong>注意</strong>：namespace 和 pod-name 之间必须使用<strong>双连字符 <code>--</code></strong>，这是 PrivateZone 域名解析的规范格式。使用单连字符会导致 502 错误。</p>
+</blockquote>
+<h3 id="sandbox-pod">获取 Sandbox Pod 名称</h3>
+<p>通过以下命令获取可用的 OpenClaw Sandbox Pod，或直接在控制台查看：</p>
+<pre><code class="language-bash">kubectl get pods -n default -l app=openclaw
+</code></pre>
+<p>输出示例：</p>
+<pre><code>NAME             READY   STATUS    RESTARTS   AGE
+openclaw-abc12   2/2     Running   0          10m
+openclaw-def34   2/2     Running   0          15m
+</code></pre>
+<h3 id="_13">本地访问配置</h3>
+<p>由于 PrivateZone 域名只在 VPC 内生效，本地访问需要配置 hosts 文件：</p>
+<p><strong>步骤 1：获取 ALB 公网 IP</strong></p>
+<p>在 testpod 执行 <code>dig ${alb_domain}</code>，其中 <code>alb_domain</code> 可在计算巢服务实例界面处看到：</p>
+<p><img alt="ALB 域名查看" src="img_12.png" /></p>
+<p><img alt="dig 命令结果" src="img_13.png" /></p>
+<p><strong>步骤 2：配置 hosts 文件</strong></p>
+<p>将 ALB 公网 IP 和沙箱域名添加到 <code>/etc/hosts</code>：</p>
+<pre><code class="language-bash"># macOS/Linux
+sudo vim /etc/hosts
+
+# 添加以下内容（替换为实际的 ALB IP 和 Pod 名称）
+39.103.89.43 18789-default--openclaw-abc12.agent-vpc.infra
+39.103.89.43 18789-default--openclaw-def34.agent-vpc.infra
+</code></pre>
+<p><strong>步骤 3：浏览器访问</strong></p>
+<p>在浏览器中打开（需要接受自签名证书警告）：</p>
+<pre><code>https://18789-default--openclaw-abc12.agent-vpc.infra?token=clawdbot-mode-123456
+</code></pre>
+<p><img alt="img_14.png" src="img_14.png" /></p>
+<h2 id="_14">可观测能力</h2>
+<h3 id="openclaw_1">OpenClaw 日志</h3>
+<p>SLS k8s原生能力在ACS集群内通过alibaba-log-controller组件提供，通过CR的方式创建采集配置，对应的CRD资源名为ClusterAliyunPipelineConfig。</p>
+<p><img alt="img_16.png" src="img_16.png" /></p>
+<p>SLS提供开箱即用的OpenClaw采集配置，可以通过SLS控制台访问OpenClaw日志，对应的SLS的Project为k8s-log-${acs集群id},
+- OpenClaw Runtime日志（网关 / 应用）
+  - 对应的 logstore 为 openclaw-runtime
+  - 对应的采集配置为 openclaw-runtime-config
+  - 对应的K8s集群中的CR名为 openclaw-runtime-config
+- OpenClaw Session 审计日志
+  - 对应的 logstore 为 openclaw-session
+  - 对应的采集配置为 openclaw-session-config
+  - 对应的K8s集群中的CR名为 openclaw-session-config</p>
+<p>针对OpenClaw日志，SLS内置仪表盘覆盖安全审计、成本分析、行为分析三个维度:
+- OpenClaw 行为分析大盘: 对 OpenClaw 的运行行为进行全量记录与分类统计
+- OpenClaw 审计大盘: 从行为总览、高危命令、提示词注入、数据外泄等维度展开，提供实时行为监控、威胁识别与事后溯源的完整能力
+- OpenClaw Token 分析大盘: 从整体概览、模型维度趋势、会话等维度展开，提供用量监控、成本分析与异常发现能力</p>
+<p><img alt="img_15.png" src="img_15.png" /></p>
+<p>注意：
+内置采集配置仅针对demo镜像，自定义镜像的日志路径、容器过滤条件等可能有所不同，可以在ACS集群内通过修改对应的CR进行配置修正。</p>
+        
+      </div>
+
+      <div class="copyrights">© 2009-2022 Aliyun.com 版权所有</div>
+    </div>
+  </div>
+  
+  <!--
+  MkDocs version      : 1.6.1
+  Docs Build Date UTC : 2026-05-06 02:50:38.270349+00:00
+  -->
+</body>
+</html>

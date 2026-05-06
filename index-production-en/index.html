@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="计算巢是阿里云开放给企业应用服务商的服务管理平台。服务商能够在计算巢上发布私有化部署服务，为其客户提供云上软件一键部署的能力；同时也支持全托管模式的服务，赋能服务商托管其客户资源。">
+  <title>OpenClaw Enterprise Edition - Production Deployment Guide - Aliyun 计算巢 x Demo</title>
+
+  <link rel="shortcut icon" href="../img/favicon.ico">
+
+  <link rel="stylesheet" href="https://unpkg.com/purecss@1.0.0/build/pure-min.css">
+  <link rel="stylesheet" href="../css/theme.css">
+  
+
+  
+
+  
+  
+
+  
+    <script src="../search/main.js"></script>
+  
+
+  
+
+  <script src="../js/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+
+<body>
+  <div class="container">
+    <div class="nav">
+      <div class="nav-inner">
+        <div class="logo">
+          <img src="./img/logo-2x.png">
+        </div>
+        <div class="nav-list">
+          <ul>
+          
+              <li><a href="#openclaw-enterprise-edition-production-deployment-guide">OpenClaw Enterprise Edition - Production Deployment Guide</a></li>
+              
+                  <li><a href="#overview">Overview</a></li>
+                  
+                      <li class="li-h3"><a href="#network-architecture">Network Architecture</a></li>
+                  
+                      <li class="li-h3"><a href="#network-isolation-policy">Network Isolation Policy</a></li>
+                  
+              
+                  <li><a href="#prerequisites">Prerequisites</a></li>
+                  
+                      <li class="li-h3"><a href="#activate-services">Activate Services</a></li>
+                  
+              
+                  <li><a href="#deployment-steps">Deployment Steps</a></li>
+                  
+                      <li class="li-h3"><a href="#step-1-create-a-service-instance">Step 1: Create a Service Instance</a></li>
+                  
+                      <li class="li-h3"><a href="#step-2-select-template">Step 2: Select Template</a></li>
+                  
+                      <li class="li-h3"><a href="#step-3-configure-vpc-and-availability-zones">Step 3: Configure VPC and Availability Zones</a></li>
+                  
+                      <li class="li-h3"><a href="#step-4-configure-control-vswitches">Step 4: Configure Control VSwitches</a></li>
+                  
+                      <li class="li-h3"><a href="#step-5-configure-openclaw-vswitches">Step 5: Configure OpenClaw VSwitches</a></li>
+                  
+                      <li class="li-h3"><a href="#step-6-configure-cluster-parameters">Step 6: Configure Cluster Parameters</a></li>
+                  
+                      <li class="li-h3"><a href="#step-7-configure-sandbox-parameters">Step 7: Configure Sandbox Parameters</a></li>
+                  
+                      <li class="li-h3"><a href="#step-8-configure-openclaw-parameters">Step 8: Configure OpenClaw Parameters</a></li>
+                  
+                      <li class="li-h3"><a href="#step-9-configure-cms-observability-optional">Step 9: Configure CMS Observability (Optional)</a></li>
+                  
+                      <li class="li-h3"><a href="#step-10-confirm-and-create">Step 10: Confirm and Create</a></li>
+                  
+              
+                  <li><a href="#deployment-verification">Deployment Verification</a></li>
+                  
+                      <li class="li-h3"><a href="#view-service-instance-status">View Service Instance Status</a></li>
+                  
+              
+                  <li><a href="#automated-testing-no-need-to-configure-local-environment-or-domain-resolution-suitable-for-quick-verification">Automated Testing (no need to configure local environment or domain resolution, suitable for quick verification)</a></li>
+                  
+              
+                  <li><a href="#sandboxset-configuration">SandboxSet Configuration</a></li>
+                  
+              
+                  <li><a href="#access-the-openclaw-web-ui">Access the OpenClaw Web UI</a></li>
+                  
+                      <li class="li-h3"><a href="#configure-domain-name-resolution">Configure Domain Name Resolution</a></li>
+                  
+                      <li class="li-h3"><a href="#domain-name-format">Domain Name Format</a></li>
+                  
+                      <li class="li-h3"><a href="#get-the-sandbox-pod-name">Get the Sandbox Pod Name</a></li>
+                  
+              
+                  <li><a href="#sandbox-demo">Sandbox Demo</a></li>
+                  
+                      <li class="li-h3"><a href="#create-via-python-sdk">Create via Python SDK</a></li>
+                  
+              
+                  <li><a href="#network-isolation-details">Network Isolation Details</a></li>
+                  
+                      <li class="li-h3"><a href="#trafficpolicy">TrafficPolicy</a></li>
+                  
+                      <li class="li-h3"><a href="#enterprise-security-group-description">Enterprise Security Group Description</a></li>
+                  
+                      <li class="li-h3"><a href="#quick-reference-template-parameters-vs-network-isolation-concepts">Quick Reference: Template Parameters vs. Network Isolation Concepts</a></li>
+                  
+              
+                  <li><a href="#observability">Observability</a></li>
+                  
+                      <li class="li-h3"><a href="#openclaw-logs">OpenClaw Logs</a></li>
+                  
+              
+                  <li><a href="#time-estimate">Time Estimate</a></li>
+                  
+              
+                  <li><a href="#frequently-asked-questions">Frequently Asked Questions</a></li>
+                  
+                      <li class="li-h3"><a href="#how-to-troubleshoot-a-deployment-failure">How to troubleshoot a deployment failure?</a></li>
+                  
+                      <li class="li-h3"><a href="#kubeconfig-cannot-connect">kubeconfig cannot connect?</a></li>
+                  
+                      <li class="li-h3"><a href="#pod-starts-slowly">Pod starts slowly?</a></li>
+                  
+              
+          
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="content theme-github">
+      
+      <div class="content-inner">        
+        
+        <h1 id="openclaw-enterprise-edition-production-deployment-guide">OpenClaw Enterprise Edition - Production Deployment Guide</h1>
+<p>This document describes the <strong>Production</strong> deployment scheme for OpenClaw Enterprise Edition. It is applicable to enterprise customers who have strict requirements on network isolation, security, and high availability.</p>
+<h2 id="overview">Overview</h2>
+<p>Production deployment is based on the <strong>ACK Managed Cluster + VirtualNode (ACS)</strong> architecture and supports <strong>3-AZ high availability</strong> and <strong>Poseidon TrafficPolicy network isolation</strong>.</p>
+<ul>
+<li><strong>Cluster Type</strong>: ACK Pro managed cluster + VirtualNode (Sandbox Pods run on ACS elastic compute)</li>
+<li><strong>Node Management</strong>: ECS node pool runs control components (sandbox-manager, etc.); Sandbox Pods scale elastically on demand</li>
+<li><strong>Network Isolation</strong>: Poseidon TrafficPolicy + Security Group multi-layer isolation</li>
+<li><strong>High Availability</strong>: 3-AZ deployment, 6 VSwitches (3 for business, 3 for OpenClaw isolation)</li>
+</ul>
+<h3 id="network-architecture">Network Architecture</h3>
+<ul>
+<li><strong>3 Availability Zones</strong>: Cross-AZ high availability deployment</li>
+<li><strong>6 VSwitches</strong>: 3 business VSwitches + 3 OpenClaw isolation VSwitches</li>
+<li><strong>Standalone NAT Gateway</strong>: OpenClaw sandboxes use a dedicated NAT Gateway and EIP for outbound traffic</li>
+<li><strong>ALB Ingress</strong>: ALB load balancer as the ingress gateway</li>
+<li><strong>PrivateZone</strong>: Wildcard domain name resolution within the VPC</li>
+</ul>
+<h3 id="network-isolation-policy">Network Isolation Policy</h3>
+<p>Production deployment achieves sandbox network isolation through a multi-layer security policy:</p>
+<p><strong>Layer 1: Enterprise Security Group</strong></p>
+<p><strong>Layer 2: Poseidon TrafficPolicy</strong>
+- Fine-grained network policies at the Kubernetes layer via GlobalTrafficPolicy</p>
+<p><strong>Layer 3: Standalone NAT Gateway</strong>
+- OpenClaw sandboxes use a dedicated NAT Gateway and EIP for outbound traffic, completely isolated from business traffic</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ol>
+<li>Have an Alibaba Cloud account with real-name authentication completed</li>
+<li>Prepare TLS certificate files (<code>fullchain.pem</code> and <code>privkey.pem</code>) for HTTPS access to the E2B API</li>
+<li>Grant permissions to the RAM user:
+   If you are using a RAM user, you need to grant the necessary permissions to the RAM user before completing the deployment. Refer to the <a href="https://help.aliyun.com/zh/compute-nest/security-and-compliance/grant-user-permissions-to-a-ram-user">authorization documentation</a>.
+   The permission policies required to deploy this service include two system policies and one custom policy. Please ask a user with administrator privileges to grant the following permissions to the RAM user:</li>
+</ol>
+<p><strong>System Permission Policies:</strong>
+   - AliyunComputeNestUserFullAccess: Permissions for managing the Compute Nest service on the user side
+   - AliyunROSFullAccess: Permissions to manage the Resource Orchestration Service (ROS)</p>
+<p><strong>Custom Permission Policy:</strong> <a href="https://github.com/aliyun-computenest/openclaw-acs-sandbox/blob/main/docs/policy_prod.json">policy_prod.json</a></p>
+<h3 id="activate-services">Activate Services</h3>
+<p>If you have not previously used the related cloud services, you will be prompted to first activate them and create the corresponding service-linked roles during deployment, as shown below.</p>
+<p><img alt="img_17.png" src="images-en/img_17.png" /></p>
+<p>This step requires relatively high-risk permissions (administrator access to cloud services). We recommend one of the following two approaches:</p>
+<blockquote>
+<p>Note: Activation is a one-time operation, only required the first time you use the service.</p>
+</blockquote>
+<ol>
+<li>Ask an administrator user to open the Compute Nest service deployment link, and let the administrator follow the prompts to activate the services.</li>
+<li>Ask an administrator user to temporarily grant administrator privileges to the RAM user; once authorized, the RAM user can perform the activation. The required permission policy is as follows:</li>
+</ol>
+<p>Service activation permission policy: <a href="https://github.com/aliyun-computenest/openclaw-acs-sandbox/blob/main/docs/open_policy.json">open_policy.json</a></p>
+<h2 id="deployment-steps">Deployment Steps</h2>
+<h3 id="step-1-create-a-service-instance">Step 1: Create a Service Instance</h3>
+<ol>
+<li>Log in to the <a href="https://computenest.console.aliyun.com">Compute Nest Console</a></li>
+<li>Find the <strong>OpenClaw-ACS-Sandbox Cluster Edition</strong> service</li>
+<li>Click <strong>Create Service Instance</strong></li>
+</ol>
+<h3 id="step-2-select-template">Step 2: Select Template</h3>
+<p>At the top of the creation page, select the <strong>Production Environment</strong> template:</p>
+<ul>
+<li><strong>Test Environment</strong>: Dual-AZ, suitable for quick verification</li>
+<li><strong>Production Environment</strong>: 3-AZ high availability with network isolation, suitable for production use. (If you need a dual-AZ production environment, select the "Production Environment - Dual-AZ Edition" template.)</li>
+</ul>
+<h3 id="step-3-configure-vpc-and-availability-zones">Step 3: Configure VPC and Availability Zones</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Zone 1/2/3</strong></td>
+<td>Select three different availability zones</td>
+<td>Choose based on region</td>
+</tr>
+<tr>
+<td><strong>Select existing / new VPC</strong></td>
+<td>Create a new VPC or use an existing one</td>
+<td>Create new VPC</td>
+</tr>
+<tr>
+<td><strong>VPC IPv4 CIDR block</strong></td>
+<td>VPC primary CIDR block</td>
+<td><code>192.168.0.0/16</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="step-4-configure-control-vswitches">Step 4: Configure Control VSwitches</h3>
+<p>Configure a business VSwitch CIDR block for each of the 3 availability zones, used for cluster nodes and control components. If you select an existing VPC that has an additional CIDR block, use the VSwitch corresponding to the VPC primary CIDR block:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Control VSwitch subnet CIDR 1</strong></td>
+<td>Zone 1 CIDR block</td>
+<td><code>192.168.0.0/24</code></td>
+</tr>
+<tr>
+<td><strong>Control VSwitch subnet CIDR 2</strong></td>
+<td>Zone 2 CIDR block</td>
+<td><code>192.168.1.0/24</code></td>
+</tr>
+<tr>
+<td><strong>Control VSwitch subnet CIDR 3</strong></td>
+<td>Zone 3 CIDR block</td>
+<td><code>192.168.2.0/24</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="step-5-configure-openclaw-vswitches">Step 5: Configure OpenClaw VSwitches</h3>
+<p>Configure dedicated VSwitches for OpenClaw sandboxes to achieve physical isolation from the business network:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>OpenClaw dedicated VSwitch CIDR 1</strong></td>
+<td>Zone 1 CIDR block</td>
+<td><code>192.168.120.0/24</code></td>
+</tr>
+<tr>
+<td><strong>OpenClaw dedicated VSwitch CIDR 2</strong></td>
+<td>Zone 2 CIDR block</td>
+<td><code>192.168.121.0/24</code></td>
+</tr>
+<tr>
+<td><strong>OpenClaw dedicated VSwitch CIDR 3</strong></td>
+<td>Zone 3 CIDR block</td>
+<td><code>192.168.122.0/24</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>OpenClaw VSwitches support additional CIDR blocks. The 3 OpenClaw VSwitch CIDR blocks must be different from each other.</p>
+</blockquote>
+<h3 id="step-6-configure-cluster-parameters">Step 6: Configure Cluster Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Service CIDR</strong></td>
+<td>Kubernetes Service CIDR block</td>
+<td><code>172.16.0.0/16</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Service CIDR must not overlap with the VPC CIDR or any existing cluster CIDR, and cannot be modified after creation.</p>
+</blockquote>
+<h3 id="step-7-configure-sandbox-parameters">Step 7: Configure Sandbox Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+<th>Required</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Sandbox access domain</strong></td>
+<td>Domain name for accessing the Sandbox API</td>
+<td>Has default</td>
+<td><code>agent-vpc.infra</code></td>
+</tr>
+<tr>
+<td><strong>TLS Certificate</strong></td>
+<td><code>fullchain.pem</code> certificate file</td>
+<td><strong>Required</strong></td>
+<td></td>
+</tr>
+<tr>
+<td><strong>TLS Certificate Key</strong></td>
+<td><code>privkey.pem</code> private key file</td>
+<td><strong>Required</strong></td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Configure intranet domain resolution</strong></td>
+<td>Automatically create a PrivateZone</td>
+<td>Recommended</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><strong>PrivateZone creation mode</strong></td>
+<td>Create new or reuse an existing PrivateZone (only shown when ExistingVPC + intranet domain resolution is enabled). If a PrivateZone with the same domain already exists in the VPC, the template will detect it automatically; please select "Reuse existing"</td>
+<td>Default new</td>
+<td>New</td>
+</tr>
+<tr>
+<td><strong>Sandbox API access key</strong></td>
+<td>Key used to access the Sandbox Management API</td>
+<td>Optional</td>
+<td>Auto-generated</td>
+</tr>
+<tr>
+<td><strong>Sandbox Manager CPU</strong></td>
+<td>sandbox-manager CPU resources</td>
+<td>Default</td>
+<td><code>2</code></td>
+</tr>
+<tr>
+<td><strong>Sandbox Manager Memory</strong></td>
+<td>sandbox-manager memory resources</td>
+<td>Default</td>
+<td><code>4Gi</code></td>
+</tr>
+<tr>
+<td><strong>Schedule Sandbox Manager to virtual node</strong></td>
+<td>Whether to schedule Sandbox Manager to a virtual node (ACS mode). When enabled, Sandbox Manager runs on a serverless virtual node</td>
+<td>Enabled by default</td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><strong>Specify dedicated VSwitch for ALB</strong></td>
+<td>When enabled, you can specify a dedicated VSwitch for ALB, isolated from cluster node VSwitches (only effective in ExistingVPC scenarios)</td>
+<td>Optional</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>ALB VSwitch ID (Zone 1)</strong></td>
+<td>Dedicated VSwitch used by ALB in Zone 1; must belong to the same VPC</td>
+<td>Optional (required when dedicated VSwitch is enabled)</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>ALB VSwitch ID (Zone 2)</strong></td>
+<td>Dedicated VSwitch used by ALB in Zone 2; must belong to the same VPC</td>
+<td>Optional (required when dedicated VSwitch is enabled)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="step-8-configure-openclaw-parameters">Step 8: Configure OpenClaw Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+<th>Required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>OpenClaw deployment namespace</strong></td>
+<td>Kubernetes namespace where SandboxSet (OpenClaw Pods) and TestPod reside. <code>sandbox-manager</code> is always deployed in the <code>sandbox-system</code> namespace and is not affected by this parameter.</td>
+<td>Default <code>default</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="step-9-configure-cms-observability-optional">Step 9: Configure CMS Observability (Optional)</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+<th>Required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Enable CMS Observability</strong></td>
+<td>When enabled, the system automatically integrates with Alibaba Cloud Monitor 2.0 (ARMS APM) to provide distributed tracing and performance monitoring for OpenClaw sandboxes</td>
+<td>Disabled by default</td>
+</tr>
+<tr>
+<td><strong>CMS Workspace name</strong></td>
+<td>Workspace name of Cloud Monitor 2.0. You can view it in the <a href="https://arms.console.aliyun.com/">ARMS Console</a> under Environment Management. The system automatically retrieves the required AuthToken and Project info from this Workspace, no manual configuration needed</td>
+<td>Required when CMS is enabled</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>💡 <strong>Note</strong>: After enabling CMS Observability, the system automatically queries Workspace EntryPointInfo (including AuthToken and Project) via <code>DATASOURCE::CMS2::ServiceObservability</code> and injects them into the OpenClaw sandbox startup script, so no ARMS-related parameters need to be filled manually.</p>
+</blockquote>
+<h3 id="step-10-confirm-and-create">Step 10: Confirm and Create</h3>
+<ol>
+<li>Click <strong>Next: Confirm Order</strong></li>
+<li>Confirm the configuration parameters and cost</li>
+<li>Click <strong>Create</strong> to start the deployment</li>
+</ol>
+<blockquote>
+<p>Deployment takes approximately <strong>15-22 minutes</strong>. Please be patient.</p>
+</blockquote>
+<h2 id="deployment-verification">Deployment Verification</h2>
+<h3 id="view-service-instance-status">View Service Instance Status</h3>
+<p>After deployment completes, on the <strong>Service Instances</strong> page of the Compute Nest console, you will see the instance status change to <strong>Deployed</strong>.</p>
+<h2 id="automated-testing-no-need-to-configure-local-environment-or-domain-resolution-suitable-for-quick-verification">Automated Testing (no need to configure local environment or domain resolution, suitable for quick verification)</h2>
+<ol>
+<li>Click the Compute Nest service instance to find the ACK cluster contained in the instance.
+   <img alt="img_8.png" src="../images-en/img_8.png" /></li>
+<li>On the cluster's container groups page, find <code>acs-sandbox-test-pod</code> and click "Terminal" to log in.
+   <img alt="img_9.png" src="../images-en/img_9.png" /></li>
+<li>
+<p>Test creating an OpenClaw sandbox.</p>
+</li>
+<li>
+<p>Configure the following environment variables to set the <code>GATEWAY_TOKEN</code> and the <code>API_KEY</code> for accessing Bailian (DashScope) for OpenClaw. If you skip this step, the default values are used.</p>
+<ul>
+<li>Default <code>GATEWAY_TOKEN</code>: <code>clawdbot-mode-123456</code></li>
+<li>Default <code>DASHSCOPE_API_KEY</code>: <code>sk-****</code></li>
+<li>Default Bailian baseUrl (China): <code>https://dashscope.aliyuncs.com/compatible-mode/v1</code></li>
+<li>Default Bailian baseUrl (International): <code>https://dashscope-intl.aliyuncs.com/compatible-mode/v1</code></li>
+<li>These values are pre-configured in <code>openclaw_template.json</code>.</li>
+</ul>
+<p><code>bash
+ export GATEWAY_TOKEN=****
+ export DASHSCOPE_API_KEY=****</code>
+   - Run <code>python create_openclaw.py</code>
+   - Wait for the script to finish and obtain the <code>SandboxId</code>. Once the service is ready, OpenClaw has started successfully, and you can access the OpenClaw Web UI of the corresponding sandbox.
+4. Test creating, hibernating, and waking up an OpenClaw sandbox.
+   - Run <code>python test_openclaw.py</code>
+5. Wait for the script to verify all functions. When the log shows <strong>"创建 sandbox 耗时" (Time taken to create sandbox)</strong>, the verification has passed.</p>
+</li>
+</ol>
+<h2 id="sandboxset-configuration">SandboxSet Configuration</h2>
+<p>Example of a production SandboxSet configuration:</p>
+<pre><code class="language-yaml">apiVersion: agents.kruise.io/v1alpha1
+kind: SandboxSet
+metadata:
+  name: openclaw
+  namespace: ${SandboxNamespace}
+spec:
+  persistentContents:
+    - filesystem
+  replicas: ${OpenClawReplicas}
+  runtimes:
+    - name: agent-runtime
+  template:
+    metadata:
+      labels:
+        app: openclaw
+        alibabacloud.com/acs: &quot;true&quot;
+      annotations:
+        image.alibabacloud.com/enable-image-cache: &quot;true&quot;
+        network.alibabacloud.com/vswitch-ids: &quot;${OpenClawVSwitchId1},${OpenClawVSwitchId2},${OpenClawVSwitchId3}&quot;
+        network.alibabacloud.com/security-group-ids: &quot;${OpenClawIsolationSecurityGroupId}&quot;
+        network.alibabacloud.com/network-policy-mode: &quot;traffic-policy&quot;
+        network.alibabacloud.com/enable-network-policy-agent: &quot;true&quot;
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      hostNetwork: false
+      hostPID: false
+      hostIPC: false
+      shareProcessNamespace: false
+      hostname: openclaw
+      containers:
+        - name: gateway
+          image: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2
+          securityContext:
+            readOnlyRootFilesystem: false
+            runAsUser: 1000
+            runAsGroup: 1000
+          command: [&quot;bash&quot;, &quot;-c&quot;]
+          args:
+            - &quot;exec node openclaw.mjs gateway run --allow-unconfigured&quot;
+          ports:
+            - name: gateway
+              containerPort: 18789
+              protocol: TCP
+            - name: runtime
+              containerPort: 49983
+              protocol: TCP
+          env:
+            - name: OPENCLAW_CONFIG_DIR
+              value: /home/node/.openclaw/openclaw.json
+            - name: KUBERNETES_SERVICE_PORT_HTTPS
+              value: &quot;&quot;
+            - name: KUBERNETES_SERVICE_PORT
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT_443_TCP
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT_443_TCP_PROTO
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT_443_TCP_ADDR
+              value: &quot;&quot;
+            - name: KUBERNETES_SERVICE_HOST
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT
+              value: &quot;&quot;
+            - name: KUBERNETES_PORT_443_TCP_PORT
+              value: &quot;&quot;
+          resources:
+            requests:
+              cpu: 2
+              memory: 4Gi
+            limits:
+              cpu: 2
+              memory: 4Gi
+          startupProbe:
+            exec:
+              command:
+                - node
+                - -e
+                - &quot;require('http').get('http://127.0.0.1:18789/healthz', r =&gt; process.exit(r.statusCode &lt; 400 ? 0 : 1)).on('error', () =&gt; process.exit(1))&quot;
+            initialDelaySeconds: 1
+            periodSeconds: 2
+            failureThreshold: 150
+</code></pre>
+<p><strong>Key Field Descriptions</strong></p>
+<ul>
+<li><code>SandboxSet.spec.persistentContents: filesystem</code> — Only the file system is preserved during pause/connect</li>
+<li><code>template.spec.automountServiceAccountToken: false</code> — Pod does not mount the Service Account</li>
+<li><code>template.spec.enableServiceLinks: false</code> — Pod does not inject Service environment variables</li>
+<li><code>template.metadata.labels.alibabacloud.com/acs: "true"</code> — Use ACS compute</li>
+<li><code>template.metadata.annotations.ops.alibabacloud.com/pause-enabled: "true"</code> — Support pause/connect actions</li>
+<li><code>template.metadata.annotations.network.alibabacloud.com/enable-network-policy-agent: "true"</code> — Enable the Network Policy Agent</li>
+<li><code>template.metadata.annotations.network.alibabacloud.com/network-policy-mode: "traffic-policy"</code> — Use Poseidon TrafficPolicy mode for network isolation</li>
+</ul>
+<blockquote>
+<p>⚠️ If you plan to use Pause, <strong>do not configure</strong> liveness/readiness probes, to avoid health check issues during pause.</p>
+</blockquote>
+<p><strong>Required Modifications</strong></p>
+<ul>
+<li><code>registry-cn-hangzhou.ack.aliyuncs.com/ack-demo/openclaw:2026.3.23-2</code> — Replace with your own custom-built image</li>
+</ul>
+<p><strong>Mechanism Overview</strong></p>
+<p>The Pod starts <code>envd</code> to support the server-side interface of the E2B SDK. After creating the resources above with <code>kubectl</code>, the SandboxSet will be created and the sandbox will become available.</p>
+<h2 id="access-the-openclaw-web-ui">Access the OpenClaw Web UI</h2>
+<h3 id="configure-domain-name-resolution">Configure Domain Name Resolution</h3>
+<h4 id="method-1-dns-resolution-production-environment">Method 1: DNS Resolution (Production Environment)</h4>
+<ol>
+<li>Obtain the ALB access endpoint</li>
+<li>At your DNS provider, add a <strong>CNAME</strong> record pointing your domain to the ALB endpoint</li>
+<li>If you need intranet access, you can add intranet domain resolution via PrivateZone</li>
+</ol>
+<h4 id="method-2-local-hosts-file-requires-alb-public-access-for-temporary-quick-verification-only">Method 2: Local Hosts File (Requires ALB Public Access; for Temporary Quick Verification Only)</h4>
+<ol>
+<li>Obtain the ALB access endpoint: view the ALB domain on the Service Instance details page</li>
+<li>Get the ALB public IP via <code>ping</code> or <code>dig</code></li>
+<li>Configure <code>/etc/hosts</code>:</li>
+</ol>
+<pre><code class="language-bash">sudo vim /etc/hosts
+# Add the following (replace with the actual ALB IP and Pod name)
+39.103.89.43 18789-default--openclaw-abc12.agent-vpc.infra
+39.103.89.43 api.agent-vpc.infra
+</code></pre>
+<h3 id="domain-name-format">Domain Name Format</h3>
+<p>OpenClaw sandboxes are accessed via PrivateZone wildcard DNS resolution + ALB routing. The domain name format is:</p>
+<pre><code>&lt;port&gt;-&lt;namespace&gt;--&lt;pod-name&gt;.&lt;e2b-domain&gt;?token=&lt;gateway-token&gt;
+                 ↑↑
+        Double hyphen (important!)
+</code></pre>
+<p><strong>Parameter Descriptions</strong>:
+- <strong><code>port</code></strong>: OpenClaw Web UI port, fixed at <code>18789</code>
+- <strong><code>namespace</code></strong>: Namespace of the Pod, default <code>default</code>
+- <strong><code>pod-name</code></strong>: Sandbox Pod name, e.g. <code>openclaw-abc12</code>
+- <strong><code>e2b-domain</code></strong>: E2B domain configured during deployment
+- <strong><code>gateway-token</code></strong>: The <code>GATEWAY_TOKEN</code> value configured in the SandboxSet</p>
+<p><strong>Example URL</strong>:</p>
+<pre><code>https://18789-default--openclaw-abc12.agent-vpc.infra?token=clawdbot-mode-123456
+</code></pre>
+<blockquote>
+<p>⚠️ A <strong>double hyphen <code>--</code></strong> must be used between namespace and pod-name; using a single hyphen will cause a 502 error.</p>
+</blockquote>
+<h3 id="get-the-sandbox-pod-name">Get the Sandbox Pod Name</h3>
+<pre><code class="language-bash">kubectl get pods -n default -l app=openclaw
+</code></pre>
+<h2 id="sandbox-demo">Sandbox Demo</h2>
+<p>You can run the demo tests in the <code>acs-sandbox-test-pod</code> under the cluster's <code>default</code> namespace.</p>
+<h3 id="create-via-python-sdk">Create via Python SDK</h3>
+<ol>
+<li>Install the E2B Python SDK</li>
+</ol>
+<p><code>bash
+   pip install e2b-code-interpreter</code></p>
+<ol>
+<li>Initialize the client runtime environment configuration</li>
+</ol>
+<p><code>bash
+   export E2B_DOMAIN=your.domain
+   export E2B_API_KEY=your-token
+   # If you use a self-signed certificate, also configure a trusted CA certificate
+   export SSL_CERT_FILE=/path/to/ca-fullchain.pem</code></p>
+<h4 id="create-a-sandbox-and-configure-user-information">Create a Sandbox and Configure User Information</h4>
+<p>Configure the user's <code>GATEWAY_TOKEN</code> for OpenClaw and the <code>API_KEY</code> for accessing Bailian (DashScope):</p>
+<pre><code class="language-bash">export GATEWAY_TOKEN=****
+export DASHSCOPE_API_KEY=****
+</code></pre>
+<p>Create a Sandbox for the user and configure per-user information inside it. The following code reads the <code>openclaw_template.json</code> configuration template inside <code>acs-sandbox-test-pod</code> and injects the user's individual token and LLM authentication information.</p>
+<p>Reference template:</p>
+<pre><code class="language-json">{
+    &quot;agents&quot;: {
+        &quot;defaults&quot;: {
+            &quot;model&quot;: {
+                &quot;primary&quot;: &quot;bailian/qwen3.5-plus&quot;
+            },
+            &quot;workspace&quot;: &quot;/root/.openclaw/workspace&quot;
+        }
+    },
+    &quot;models&quot;: {
+        &quot;mode&quot;: &quot;merge&quot;,
+        &quot;providers&quot;: {
+            &quot;bailian&quot;: {
+                &quot;baseUrl&quot;: &quot;https://dashscope.aliyuncs.com/compatible-mode/v1&quot;,
+                &quot;apiKey&quot;: &quot;${DASHSCOPE_API_KEY}&quot;,
+                &quot;api&quot;: &quot;openai-completions&quot;,
+                &quot;models&quot;: [
+                    {
+                        &quot;id&quot;: &quot;qwen3.5-plus&quot;,
+                        &quot;name&quot;: &quot;Qwen&quot;,
+                        &quot;input&quot;: [
+                            &quot;text&quot;
+                        ],
+                        &quot;contextWindow&quot;: 1000000,
+                        &quot;maxTokens&quot;: 65536
+                    }
+                ]
+            }
+        }
+    },
+    &quot;commands&quot;: {
+        &quot;native&quot;: &quot;auto&quot;,
+        &quot;nativeSkills&quot;: &quot;auto&quot;,
+        &quot;restart&quot;: true,
+        &quot;ownerDisplay&quot;: &quot;raw&quot;
+    },
+    &quot;gateway&quot;: {
+        &quot;port&quot;: 18789,
+        &quot;bind&quot;: &quot;lan&quot;,
+        &quot;controlUi&quot;: {
+            &quot;allowedOrigins&quot;: [
+                &quot;*&quot;
+            ],
+            &quot;dangerouslyAllowHostHeaderOriginFallback&quot;: true,
+            &quot;allowInsecureAuth&quot;: true,
+            &quot;dangerouslyDisableDeviceAuth&quot;: true
+        },
+        &quot;auth&quot;: {
+            &quot;mode&quot;: &quot;token&quot;,
+            &quot;token&quot;: &quot;${GATEWAY_TOKEN}&quot;
+        }
+    }
+}
+</code></pre>
+<pre><code class="language-python"># Import and patch the E2B SDK
+import os
+import requests
+from string import Template
+from e2b_code_interpreter import Sandbox
+
+# Configure never-timeout for the user
+sbx: Sandbox = Sandbox.create(template=&quot;openclaw-sbs&quot;, metadata={
+                                  &quot;e2b.agents.kruise.io/never-timeout&quot;: &quot;true&quot;
+                              })
+print(f&quot;sandbox id: {sbx.sandbox_id}&quot;)
+
+# Read GATEWAY_TOKEN, DASHSCOPE_API_KEY, EXTERNAL_ACCESS_DOMAIN from environment variables
+GATEWAY_TOKEN = os.environ.get(&quot;GATEWAY_TOKEN&quot;, &quot;clawdbot-mode-123456&quot;)
+DASHSCOPE_API_KEY = os.environ.get(&quot;DASHSCOPE_API_KEY&quot;, &quot;sk-****&quot;)
+
+# Render openclaw-template.json and overwrite /home/node/.openclaw/openclaw.json inside
+# the sandbox to trigger an OpenClaw restart with the updated configuration.
+template_path = &quot;openclaw_template.json&quot;
+with open(template_path, &quot;r&quot;) as f:
+    template_content = f.read()
+
+rendered_content = Template(template_content).safe_substitute(
+    GATEWAY_TOKEN=GATEWAY_TOKEN,
+    DASHSCOPE_API_KEY=DASHSCOPE_API_KEY,
+)
+
+sbx.files.write(&quot;/home/node/.openclaw/openclaw.json&quot;, rendered_content, user=&quot;node&quot;)
+print(&quot;Rendered configuration written to sandbox /home/node/.openclaw/openclaw.json&quot;)
+print(f&quot;sandbox: {sbx}&quot;)
+print(f&quot;sandbox id: {sbx.sandbox_id}&quot;)
+</code></pre>
+<p>Run the code to obtain the Sandbox object returned upon creation and inspect its details:</p>
+<pre><code class="language-python">print(f&quot;sandbox: {sbx}&quot;)
+print(f&quot;sandbox id: {sbx.sandbox_id}&quot;)
+</code></pre>
+<blockquote>
+<p>The returned Sandbox object contains the details of the newly created sandbox. The <code>sandbox_id</code> follows the format <code>{Namespace}--{Sandbox Name}</code>, where the part before <code>--</code> is the K8s namespace of the corresponding resource and the part after is the sandbox name.</p>
+</blockquote>
+<h4 id="hibernate-and-wake-up">Hibernate and Wake Up</h4>
+<p>Refer to the official documentation: https://help.aliyun.com/zh/cs/user-guide/hibernate-and-wake-up-the-agent-sandbox</p>
+<blockquote>
+<p>After a sandbox is hibernated successfully, its state becomes hibernated and the corresponding Pod disappears. Note that while the sandbox instance is hibernated, the OpenClaw service is inaccessible.</p>
+</blockquote>
+<h2 id="network-isolation-details">Network Isolation Details</h2>
+<h3 id="trafficpolicy">TrafficPolicy</h3>
+<p>TrafficPolicy is used to control the network access of Agent-type applications in an ACK cluster. TrafficPolicy supports priority-based multi-level network policies and multiple matching methods including CIDR, Service, and FQDN, providing fine-grained management of inbound and outbound Pod traffic.</p>
+<p>Refer to the official documentation: <a href="https://help.aliyun.com/zh/ack/ack-managed-and-ack-dedicated/user-guide/use-trafficpolicy-to-manage-agent-network-access">Use TrafficPolicy to manage Agent network access</a></p>
+<h3 id="enterprise-security-group-description">Enterprise Security Group Description</h3>
+<p>OpenClaw security groups control the network access boundary of Sandbox Pods, organized by the following CIDR categories:</p>
+<h4 id="cidr-categories">CIDR Categories</h4>
+<table>
+<thead>
+<tr>
+<th>CIDR Type</th>
+<th>Default CIDR</th>
+<th>Corresponding Template Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Control CIDR</strong></td>
+<td><code>192.168.0.0/24</code>、<code>192.168.1.0/24</code>、<code>192.168.2.0/24</code></td>
+<td>Control VSwitch subnet CIDR 1/2/3</td>
+<td>VSwitch CIDR used by the cluster control plane / other services; sandbox-manager is deployed in this CIDR by default</td>
+</tr>
+<tr>
+<td><strong>OpenClaw CIDR</strong></td>
+<td><code>192.168.120.0/24</code>、<code>192.168.121.0/24</code>、<code>192.168.122.0/24</code></td>
+<td>OpenClaw dedicated VSwitch CIDR 1/2/3</td>
+<td>Isolated VSwitch CIDR for Agent Sandboxes; must be denied to prevent inter-sandbox traffic</td>
+</tr>
+<tr>
+<td><strong>VPC CIDR</strong></td>
+<td><code>192.168.0.0/16</code></td>
+<td>VPC IPv4 CIDR block</td>
+<td>VPC primary CIDR; both control CIDR and OpenClaw CIDR fall under this range</td>
+</tr>
+<tr>
+<td><strong>Cloud Product CIDR</strong></td>
+<td><code>100.64.0.0/10</code></td>
+<td>-</td>
+<td>CIDR for internal Alibaba Cloud product communication</td>
+</tr>
+<tr>
+<td><strong>DNS Service Address</strong></td>
+<td><code>100.100.2.136</code>、<code>100.100.2.138</code></td>
+<td>-</td>
+<td>Alibaba Cloud DNS service addresses</td>
+</tr>
+<tr>
+<td><strong>Private CIDR</strong></td>
+<td><code>192.168.0.0/16</code>、<code>172.16.0.0/12</code>、<code>10.0.0.0/8</code></td>
+<td>-</td>
+<td>RFC 1918 private address ranges; denied by default for network isolation</td>
+</tr>
+<tr>
+<td><strong>Public</strong></td>
+<td><code>0.0.0.0/0</code></td>
+<td>-</td>
+<td>Public egress; allowed at low priority</td>
+</tr>
+</tbody>
+</table>
+<h4 id="intra-group-connectivity-policy">Intra-group Connectivity Policy</h4>
+<ul>
+<li><strong>Intra-group isolation</strong> (Sandboxes do not communicate with each other)</li>
+</ul>
+<h4 id="ingress-rules">Ingress Rules</h4>
+<table>
+<thead>
+<tr>
+<th>Priority</th>
+<th>Action</th>
+<th>Source CIDR</th>
+<th>CIDR Type</th>
+<th>Port</th>
+<th>Protocol</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>High</td>
+<td>Allow</td>
+<td><code>192.168.0.0/24</code>、<code>192.168.1.0/24</code>、<code>192.168.2.0/24</code></td>
+<td>Control CIDR</td>
+<td>All</td>
+<td>All</td>
+<td>Control components such as sandbox-manager access Sandbox</td>
+</tr>
+<tr>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>Add port rules expected by your application/components to allow/deny as needed</td>
+</tr>
+</tbody>
+</table>
+<h4 id="egress-rules">Egress Rules</h4>
+<table>
+<thead>
+<tr>
+<th>Priority</th>
+<th>Action</th>
+<th>Destination CIDR</th>
+<th>CIDR Type</th>
+<th>Port</th>
+<th>Protocol</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>High</td>
+<td>Allow</td>
+<td><code>100.64.0.0/10</code></td>
+<td>Cloud Product CIDR</td>
+<td>All</td>
+<td>All</td>
+<td>Access internal Alibaba Cloud products</td>
+</tr>
+<tr>
+<td>High</td>
+<td>Allow</td>
+<td><code>192.168.0.0/24</code>、<code>192.168.1.0/24</code>、<code>192.168.2.0/24</code></td>
+<td>Control CIDR</td>
+<td>443, 6443 (API Server), 9082 (Poseidon)</td>
+<td>TCP</td>
+<td>Access cluster API Server and Poseidon</td>
+</tr>
+<tr>
+<td>High</td>
+<td>Allow</td>
+<td><code>192.168.0.0/24</code>、<code>192.168.1.0/24</code>、<code>192.168.2.0/24</code></td>
+<td>Control CIDR</td>
+<td>53 (DNS)</td>
+<td>All</td>
+<td>In-cluster DNS resolution</td>
+</tr>
+<tr>
+<td>High</td>
+<td>Allow</td>
+<td><code>100.100.2.136</code>、<code>100.100.2.138</code></td>
+<td>DNS Service Address</td>
+<td>53 (DNS)</td>
+<td>All</td>
+<td>Alibaba Cloud DNS service</td>
+</tr>
+<tr>
+<td>High</td>
+<td>Deny</td>
+<td><code>192.168.120.0/24</code>、<code>192.168.121.0/24</code>、<code>192.168.122.0/24</code></td>
+<td>OpenClaw CIDR</td>
+<td>All</td>
+<td>All</td>
+<td><strong>Block inter-sandbox traffic</strong>, achieving network isolation</td>
+</tr>
+<tr>
+<td>Medium</td>
+<td>Deny</td>
+<td><code>192.168.0.0/16</code>、<code>172.16.0.0/12</code>、<code>10.0.0.0/8</code></td>
+<td>Private CIDR</td>
+<td>All</td>
+<td>All</td>
+<td>Deny access to other private network resources</td>
+</tr>
+<tr>
+<td>Low</td>
+<td>Allow</td>
+<td><code>0.0.0.0/0</code></td>
+<td>Public</td>
+<td>All</td>
+<td>All</td>
+<td>Allow public egress (e.g., accessing external APIs)</td>
+</tr>
+<tr>
+<td>-</td>
+<td>Allow</td>
+<td><code>192.168.0.0/24</code>、<code>192.168.1.0/24</code>、<code>192.168.2.0/24</code></td>
+<td>Control CIDR</td>
+<td>As needed</td>
+<td>As needed</td>
+<td>Optional: access non-Agent services in the cluster (e.g., LLM Server)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Note</strong>: The CIDRs above are default values (corresponding to the default parameters in Steps 4 and 5). If you change the VSwitch CIDR during deployment, the IP CIDRs in the security group rules must be adjusted accordingly.</p>
+</blockquote>
+<h3 id="quick-reference-template-parameters-vs-network-isolation-concepts">Quick Reference: Template Parameters vs. Network Isolation Concepts</h3>
+<table>
+<thead>
+<tr>
+<th>Template Parameter</th>
+<th>Concept</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VpcCidrBlock</code></td>
+<td>VPC primary CIDR</td>
+<td>Security group rules, TrafficPolicy egress allow (API Server/Poseidon)</td>
+</tr>
+<tr>
+<td><code>VSwitchCidrBlock1/2/3</code></td>
+<td>vsw-downstream (business VSwitch)</td>
+<td>CIDR where sandbox-manager, ALB, and ECS nodes reside</td>
+</tr>
+<tr>
+<td><code>OpenClawVSwitchCidrBlock1/2/3</code></td>
+<td>vsw-openclaw (isolation VSwitch)</td>
+<td>CIDR where Sandbox Pods actually run</td>
+</tr>
+<tr>
+<td><code>OpenClawCidrBlock</code></td>
+<td>vsw-openclaw aggregate CIDR</td>
+<td>GlobalTrafficPolicy deny rules, security group rules</td>
+</tr>
+<tr>
+<td><code>ServiceCidr</code></td>
+<td>K8s Service CIDR</td>
+<td>kube-dns, API Server ClusterIP</td>
+</tr>
+<tr>
+<td><code>OpenClawIsolationSecurityGroup</code></td>
+<td>Isolation security group (enterprise)</td>
+<td>Dedicated to Sandbox Pods; Pods do not communicate with each other by default</td>
+</tr>
+<tr>
+<td><code>OpenClawNatGateway</code> + <code>OpenClawNatEip</code></td>
+<td>upstream (standalone NAT)</td>
+<td>Sandbox Pod outbound traffic isolation</td>
+</tr>
+<tr>
+<td><code>OpenClawRouteTable</code></td>
+<td>Independent route table</td>
+<td>OpenClaw VSwitch default route points to the standalone NAT</td>
+</tr>
+<tr>
+<td><code>OpenClawPodNetworking</code></td>
+<td>PodNetworking CRD</td>
+<td>Schedule Pods to the isolation VSwitch and bind the isolation security group</td>
+</tr>
+<tr>
+<td><code>GlobalTrafficPolicyApplication</code></td>
+<td>GlobalTrafficPolicy</td>
+<td>Globally deny inbound traffic to the OpenClaw CIDR</td>
+</tr>
+<tr>
+<td><code>OpenClawTrafficPolicyApplication</code></td>
+<td>TrafficPolicy</td>
+<td>Fine-grained ingress/egress control for OpenClaw Pods</td>
+</tr>
+</tbody>
+</table>
+<h2 id="observability">Observability</h2>
+<h3 id="openclaw-logs">OpenClaw Logs</h3>
+<p>SLS k8s-native capabilities are provided in the ACK cluster via the <code>loongcollector</code> component, and collection configurations are created via CRs. The corresponding CRD resource name is <code>ClusterAliyunPipelineConfig</code>.</p>
+<p><img alt="img_16.png" src="../images-en/img_16.png" /></p>
+<p>SLS provides out-of-the-box OpenClaw collection configurations. You can access OpenClaw logs via the SLS console; the corresponding SLS Project is <code>k8s-log-${ack cluster id}</code>.</p>
+<ul>
+<li>OpenClaw Runtime logs (gateway / application)</li>
+<li>Corresponding logstore: <code>openclaw-runtime</code></li>
+<li>Corresponding collection config: <code>openclaw-runtime-config</code></li>
+<li>Corresponding CR name in the K8s cluster: <code>openclaw-runtime-config</code></li>
+<li>OpenClaw Session audit logs</li>
+<li>Corresponding logstore: <code>openclaw-session</code></li>
+<li>Corresponding collection config: <code>openclaw-session-config</code></li>
+<li>Corresponding CR name in the K8s cluster: <code>openclaw-session-config</code></li>
+</ul>
+<p>For OpenClaw logs, SLS provides built-in dashboards covering three dimensions—security audit, cost analysis, and behavior analysis:</p>
+<ul>
+<li><strong>OpenClaw Behavior Analysis Dashboard</strong>: Full-volume recording and classification statistics of OpenClaw runtime behavior</li>
+<li><strong>OpenClaw Audit Dashboard</strong>: Real-time behavior monitoring, threat identification, and post-incident traceability across dimensions such as behavior overview, high-risk commands, prompt injection, and data exfiltration</li>
+<li><strong>OpenClaw Token Analysis Dashboard</strong>: Usage monitoring, cost analysis, and anomaly detection across dimensions such as overall overview, per-model trends, and sessions</li>
+</ul>
+<p><img alt="img_15.png" src="../images-en/img_15.png" /></p>
+<blockquote>
+<p>Note: The built-in collection configurations are tailored for the demo image. The log paths and container filter conditions for custom images may differ; you can adjust them by modifying the corresponding CR in the ACK cluster.</p>
+</blockquote>
+<h2 id="time-estimate">Time Estimate</h2>
+<p>Approximately 20 minutes.</p>
+<h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
+<h3 id="how-to-troubleshoot-a-deployment-failure">How to troubleshoot a deployment failure?</h3>
+<ol>
+<li>View the deployment log on the Compute Nest service instance details page</li>
+<li>Go to the ROS console to view Stack events, and locate the first <code>CREATE_FAILED</code> event</li>
+<li>Use the <code>StatusReason</code> to identify the root cause</li>
+</ol>
+<h3 id="kubeconfig-cannot-connect">kubeconfig cannot connect?</h3>
+<p>If the kubeconfig you obtained uses an intranet IP and cannot connect, bind an EIP to the cluster or use a VPN to access it.</p>
+<h3 id="pod-starts-slowly">Pod starts slowly?</h3>
+<p>The first startup of the SandboxSet requires pulling the image, which takes about 2-3 minutes. You can check the progress with:</p>
+<pre><code class="language-bash">kubectl describe pod -l app=openclaw -n default
+</code></pre>
+        
+      </div>
+
+      <div class="copyrights">© 2009-2022 Aliyun.com 版权所有</div>
+    </div>
+  </div>
+  
+  <!--
+  MkDocs version      : 1.6.1
+  Docs Build Date UTC : 2026-05-06 02:50:38.289876+00:00
+  -->
+</body>
+</html>

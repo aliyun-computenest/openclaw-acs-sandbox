@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="计算巢是阿里云开放给企业应用服务商的服务管理平台。服务商能够在计算巢上发布私有化部署服务，为其客户提供云上软件一键部署的能力；同时也支持全托管模式的服务，赋能服务商托管其客户资源。">
+  <title>OpenClaw 企业版 - Session 与用户管理指南 - Aliyun 计算巢 x Demo</title>
+
+  <link rel="shortcut icon" href="../img/favicon.ico">
+
+  <link rel="stylesheet" href="https://unpkg.com/purecss@1.0.0/build/pure-min.css">
+  <link rel="stylesheet" href="../css/theme.css">
+  
+
+  
+
+  
+  
+
+  
+    <script src="../search/main.js"></script>
+  
+
+  
+
+  <script src="../js/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</head>
+
+<body>
+  <div class="container">
+    <div class="nav">
+      <div class="nav-inner">
+        <div class="logo">
+          <img src="./img/logo-2x.png">
+        </div>
+        <div class="nav-list">
+          <ul>
+          
+              <li><a href="#openclaw-session">OpenClaw 企业版 - Session 与用户管理指南</a></li>
+              
+                  <li><a href="#_1">概述</a></li>
+                  
+              
+                  <li><a href="#_2">架构说明</a></li>
+                  
+              
+                  <li><a href="#openclaw">访问 OpenClaw</a></li>
+                  
+              
+                  <li><a href="#session">Session 管理操作</a></li>
+                  
+                      <li class="li-h3"><a href="#session_1">查看当前所有 Session</a></li>
+                  
+                      <li class="li-h3"><a href="#session_2">查看特定 Session 内容</a></li>
+                  
+                      <li class="li-h3"><a href="#session_3">清理过期 Session</a></li>
+                  
+                      <li class="li-h3"><a href="#session_4">备份 Session 数据</a></li>
+                  
+              
+                  <li><a href="#pod">Pod 管理</a></li>
+                  
+                      <li class="li-h3"><a href="#pod_1">查看 Pod 状态</a></li>
+                  
+                      <li class="li-h3"><a href="#_3">扩缩容</a></li>
+                  
+                      <li class="li-h3"><a href="#pod_2">Pod 故障恢复</a></li>
+                  
+              
+                  <li><a href="#_4">存储结构</a></li>
+                  
+                      <li class="li-h3"><a href="#nas">查看 NAS 使用情况</a></li>
+                  
+              
+                  <li><a href="#_5">用户数据生命周期</a></li>
+                  
+              
+                  <li><a href="#_6">数据隔离与安全</a></li>
+                  
+                      <li class="li-h3"><a href="#session_5">Session 隔离机制</a></li>
+                  
+                      <li class="li-h3"><a href="#_7">隔离边界</a></li>
+                  
+                      <li class="li-h3"><a href="#_8">适用场景建议</a></li>
+                  
+              
+                  <li><a href="#nas_1">NAS 存储挂载详情</a></li>
+                  
+                      <li class="li-h3"><a href="#nas_2">NAS 物理结构</a></li>
+                  
+                      <li class="li-h3"><a href="#pod_3">Pod 内挂载映射</a></li>
+                  
+                      <li class="li-h3"><a href="#_9">为什么用两个挂载点</a></li>
+                  
+                      <li class="li-h3"><a href="#_10">存储容量</a></li>
+                  
+              
+                  <li><a href="#_11">常见问题</a></li>
+                  
+                      <li class="li-h3"><a href="#_12">用户反馈数据丢失</a></li>
+                  
+                      <li class="li-h3"><a href="#nas_3">NAS 存储空间不足</a></li>
+                  
+                      <li class="li-h3"><a href="#pod_4">Pod 长时间未就绪</a></li>
+                  
+              
+          
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="content theme-github">
+      
+      <div class="content-inner">        
+        
+        <h1 id="openclaw-session">OpenClaw 企业版 - Session 与用户管理指南</h1>
+<h2 id="_1">概述</h2>
+<p>OpenClaw 企业版基于阿里云 ACS 集群 + NAS 共享存储部署，采用 <strong>Session ID 映射</strong> 机制实现用户数据的持久化和跨 Pod 访问。本文档介绍部署完成后如何通过 Session ID 管理用户和 Pod。</p>
+<h2 id="_2">架构说明</h2>
+<pre><code>用户浏览器 (Session ID 保存在 Cookie)
+      │
+      ▼
+LoadBalancer (公网 IP:18789)
+      │
+      ├──▶ Pod A ──┐
+      │            │──▶ NAS 共享存储
+      └──▶ Pod B ──┘      │
+                           ├── /moltbot-shared/agents/main/sessions/
+                           │     ├── &lt;session-id-1&gt;.jsonl   ← 用户 1
+                           │     ├── &lt;session-id-2&gt;.jsonl   ← 用户 2
+                           │     └── ...
+                           └── /data/   ← OPENCLAW_DATA_DIR
+</code></pre>
+<p><strong>核心设计</strong>:
+- 所有 Pod 通过 NAS 共享 <code>/root/.moltbot</code> 和 <code>/mnt/nas</code> 目录
+- 每个用户的 Session 以 UUID 命名，数据文件存储在 NAS 上
+- LoadBalancer 将请求分发到任意 Pod，任意 Pod 都能读取任意 Session 的数据
+- Pod 删除或重建后，用户凭 Session ID 即可恢复完整工作状态</p>
+<h2 id="openclaw">访问 OpenClaw</h2>
+<p>部署完成后，ROS Stack Outputs 中会输出访问地址：</p>
+<pre><code>OpenClawAccessUrl: http://&lt;EIP&gt;:18789/?token=&lt;your-token&gt;
+</code></pre>
+<p>在浏览器中打开此地址即可使用。首次连接时系统会自动分配 Session ID 并存储在浏览器中。</p>
+<h2 id="session">Session 管理操作</h2>
+<h3 id="session_1">查看当前所有 Session</h3>
+<pre><code class="language-bash"># 进入任意 Pod 查看 NAS 上的 Session 文件
+kubectl exec -it &lt;pod-name&gt; -c openclaw -- ls -la /root/.moltbot/agents/main/sessions/
+</code></pre>
+<p>输出示例：</p>
+<pre><code>-rw-r--r-- 1 root root  4096 Mar 12 14:26 3a2f325b-7c8d-4e0f-a123-456789abcdef.jsonl
+-rw-r--r-- 1 root root  2048 Mar 12 15:30 7b1c9d0e-2f3a-4b5c-d678-9e0f1a2b3c4d.jsonl
+</code></pre>
+<p>每个 <code>.jsonl</code> 文件对应一个用户 Session。</p>
+<h3 id="session_2">查看特定 Session 内容</h3>
+<pre><code class="language-bash">kubectl exec -it &lt;pod-name&gt; -c openclaw -- cat /root/.moltbot/agents/main/sessions/&lt;session-id&gt;.jsonl
+</code></pre>
+<h3 id="session_3">清理过期 Session</h3>
+<pre><code class="language-bash"># 删除 7 天前的 Session 文件
+kubectl exec -it &lt;pod-name&gt; -c openclaw -- \
+  find /root/.moltbot/agents/main/sessions/ -name &quot;*.jsonl&quot; -mtime +7 -delete
+</code></pre>
+<h3 id="session_4">备份 Session 数据</h3>
+<p>Session 数据全部存储在 NAS 上，可以通过以下方式备份：</p>
+<pre><code class="language-bash"># 从 Pod 中打包 Session 数据
+kubectl exec &lt;pod-name&gt; -c openclaw -- \
+  tar czf /tmp/sessions-backup.tar.gz -C /root/.moltbot/agents/main/sessions/ .
+
+# 拷贝到本地
+kubectl cp &lt;pod-name&gt;:/tmp/sessions-backup.tar.gz ./sessions-backup.tar.gz -c openclaw
+</code></pre>
+<h2 id="pod">Pod 管理</h2>
+<h3 id="pod_1">查看 Pod 状态</h3>
+<pre><code class="language-bash">kubectl get sandboxset,pods -l app=openclaw -o wide
+</code></pre>
+<h3 id="_3">扩缩容</h3>
+<p>根据用户并发量调整 Pod 数量：</p>
+<pre><code class="language-bash"># 扩容到 N 个副本
+kubectl patch sandboxset openclaw --type='merge' -p '{&quot;spec&quot;:{&quot;replicas&quot;: N}}'
+
+# 查看扩容进度
+kubectl get pods -l app=openclaw -w
+</code></pre>
+<p><strong>建议</strong>: 每个 Pod 支持约 10-20 个并发 Session，按实际负载调整。</p>
+<h3 id="pod_2">Pod 故障恢复</h3>
+<p>Pod 被删除或故障时，SandboxSet 会自动创建新 Pod：</p>
+<pre><code class="language-bash"># 手动删除故障 Pod（SandboxSet 会自动重建）
+kubectl delete pod &lt;pod-name&gt;
+
+# 观察重建过程
+kubectl get pods -l app=openclaw -w
+</code></pre>
+<p>新 Pod 启动后会自动挂载 NAS，用户无需任何操作即可继续使用。</p>
+<h2 id="_4">存储结构</h2>
+<p>NAS 挂载在每个 Pod 内的路径如下：</p>
+<table>
+<thead>
+<tr>
+<th>Pod 路径</th>
+<th>NAS 子路径</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/root/.moltbot</code></td>
+<td><code>moltbot-shared/</code></td>
+<td>Session 状态、Agent 配置</td>
+</tr>
+<tr>
+<td><code>/mnt/nas</code></td>
+<td><code>/</code>（根目录）</td>
+<td>通用数据存储</td>
+</tr>
+</tbody>
+</table>
+<h3 id="nas">查看 NAS 使用情况</h3>
+<pre><code class="language-bash">kubectl exec &lt;pod-name&gt; -c openclaw -- df -h /mnt/nas
+kubectl exec &lt;pod-name&gt; -c openclaw -- du -sh /root/.moltbot/agents/main/sessions/
+</code></pre>
+<h2 id="_5">用户数据生命周期</h2>
+<pre><code>1. 用户首次访问
+   └─▶ 系统生成 Session ID (UUID) → 写入 NAS
+   └─▶ Session ID 存入浏览器 Cookie
+
+2. 用户后续访问
+   └─▶ 浏览器携带 Session ID → LB 分发到任意 Pod
+   └─▶ Pod 从 NAS 读取对应 Session 文件 → 恢复状态
+
+3. Pod 故障/删除
+   └─▶ SandboxSet 自动重建 Pod → 挂载同一 NAS
+   └─▶ 用户无感知，Session 数据完整保留
+
+4. 用户清理/下线
+   └─▶ 管理员删除 NAS 上对应的 Session 文件
+   └─▶ 或通过定时任务自动清理过期 Session
+</code></pre>
+<h2 id="_6">数据隔离与安全</h2>
+<h3 id="session_5">Session 隔离机制</h3>
+<p>用户之间的数据隔离在<strong>应用层</strong>实现，而非存储层：</p>
+<ul>
+<li>每个用户连接时，OpenClaw 分配一个随机 UUID 作为 Session ID</li>
+<li>OpenClaw 进程只加载请求中携带的 Session ID 对应的数据文件</li>
+<li>正常使用下，用户 A 不会看到用户 B 的数据</li>
+</ul>
+<h3 id="_7">隔离边界</h3>
+<p>需要注意的是，当前方案<strong>不是</strong>强制权限隔离：</p>
+<table>
+<thead>
+<tr>
+<th>层面</th>
+<th>是否隔离</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Session 数据文件</td>
+<td>应用层隔离</td>
+<td>每个 Session 一个独立 <code>.jsonl</code> 文件，OpenClaw 按 Session ID 加载</td>
+</tr>
+<tr>
+<td>NAS 文件系统</td>
+<td><strong>共享</strong></td>
+<td>所有 Session 文件在同一个 NAS 目录下，所有 Pod 均可读写</td>
+</tr>
+<tr>
+<td>访问 Token</td>
+<td><strong>共享</strong></td>
+<td>所有用户使用相同的 <code>GATEWAY_TOKEN</code>，没有用户级认证</td>
+</tr>
+<tr>
+<td>Pod 进程</td>
+<td><strong>共享</strong></td>
+<td>多个 Session 可能由同一个 Pod 进程处理</td>
+</tr>
+</tbody>
+</table>
+<p><strong>安全依赖点</strong>: Session ID 是 UUID（128 位随机数），碰撞概率极低，正常情况下不可被猜测。</p>
+<h3 id="_8">适用场景建议</h3>
+<ul>
+<li><strong>企业内部/团队使用</strong>: 当前方案已足够，团队成员互信，Session ID 的随机性提供了基本隔离</li>
+<li><strong>面向外部用户</strong>: 建议在 LoadBalancer 前增加用户认证层（如 OAuth2 网关），将用户身份与 Session ID 绑定</li>
+</ul>
+<h2 id="nas_1">NAS 存储挂载详情</h2>
+<p>NAS 只有一个 PVC（<code>openclaw-nas-pvc</code>），在每个 Pod 内挂载到两个路径：</p>
+<h3 id="nas_2">NAS 物理结构</h3>
+<pre><code>NAS 文件系统 (1cdc749ffd-xxg37.cn-beijing.nas.aliyuncs.com)
+/                               ← NAS 根目录
+├── moltbot-shared/             ← subPath, 挂载到 /root/.moltbot
+│   ├── agents/
+│   │   └── main/
+│   │       └── sessions/
+│   │           ├── d7536c03-217f-4b4f-ad5f-5ce467be42a8.jsonl  ← 用户 Session
+│   │           └── ...
+│   └── (其他 Agent 配置)
+└── data/                       ← OPENCLAW_DATA_DIR
+    └── (通用数据)
+</code></pre>
+<h3 id="pod_3">Pod 内挂载映射</h3>
+<table>
+<thead>
+<tr>
+<th>Pod 内路径</th>
+<th>存储类型</th>
+<th>NAS subPath</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/root/.moltbot</code></td>
+<td>NAS PVC</td>
+<td><code>moltbot-shared</code></td>
+<td>Session 状态、Agent 配置、对话历史（持久化）</td>
+</tr>
+<tr>
+<td><code>/mnt/nas</code></td>
+<td>NAS PVC</td>
+<td>无（根目录）</td>
+<td>通用数据目录，<code>OPENCLAW_DATA_DIR=/mnt/nas/data</code>（持久化）</td>
+</tr>
+<tr>
+<td><code>/mnt/envd</code></td>
+<td>emptyDir</td>
+<td>-</td>
+<td>envd 运行时临时文件（Pod 销毁即丢失）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_9">为什么用两个挂载点</h3>
+<ul>
+<li><code>/root/.moltbot</code> 使用 <code>subPath: moltbot-shared</code>：将 Session 数据集中存放在 NAS 的固定子目录下，避免与其他数据混杂</li>
+<li><code>/mnt/nas</code> 挂载根目录：提供通用的持久化存储空间，OpenClaw 运行产生的文件（如用户上传、代码产物）存放于此</li>
+</ul>
+<p>两个挂载点指向同一个 NAS PVC，数据最终都在同一个 NAS 文件系统上。</p>
+<h3 id="_10">存储容量</h3>
+<p>NAS（通用型）按实际使用量计费，无需预分配容量。单个 Session 文件通常几 KB 到几 MB（取决于对话长度），正常使用下存储增长缓慢。</p>
+<h2 id="_11">常见问题</h2>
+<h3 id="_12">用户反馈数据丢失</h3>
+<ol>
+<li>确认用户浏览器 Cookie 中的 Session ID 是否还在（清除浏览器数据会丢失 Session ID）</li>
+<li>检查 NAS 上对应 Session 文件是否存在：
+   <code>bash
+   kubectl exec &lt;pod-name&gt; -c openclaw -- ls -la /root/.moltbot/agents/main/sessions/ | grep &lt;session-id&gt;</code></li>
+<li>如果文件存在但用户无法访问，检查 Pod 日志：
+   <code>bash
+   kubectl logs &lt;pod-name&gt; -c openclaw --tail=50</code></li>
+</ol>
+<h3 id="nas_3">NAS 存储空间不足</h3>
+<pre><code class="language-bash"># 查看存储使用情况
+kubectl exec &lt;pod-name&gt; -c openclaw -- df -h /mnt/nas
+
+# 清理旧 Session 释放空间
+kubectl exec &lt;pod-name&gt; -c openclaw -- \
+  find /root/.moltbot/agents/main/sessions/ -name &quot;*.jsonl&quot; -mtime +30 -delete
+</code></pre>
+<h3 id="pod_4">Pod 长时间未就绪</h3>
+<p>新 Pod 通常需要 60-90 秒完成启动（包括 NAS 挂载和 envd 初始化）。如果超过 3 分钟仍未就绪：</p>
+<pre><code class="language-bash"># 查看 Pod 事件
+kubectl describe pod &lt;pod-name&gt;
+
+# 查看容器日志
+kubectl logs &lt;pod-name&gt; -c openclaw
+kubectl logs &lt;pod-name&gt; -c init
+</code></pre>
+        
+      </div>
+
+      <div class="copyrights">© 2009-2022 Aliyun.com 版权所有</div>
+    </div>
+  </div>
+  
+  <!--
+  MkDocs version      : 1.6.1
+  Docs Build Date UTC : 2026-05-06 02:50:38.305571+00:00
+  -->
+</body>
+</html>
