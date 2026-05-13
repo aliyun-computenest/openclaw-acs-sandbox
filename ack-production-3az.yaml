@@ -1653,34 +1653,6 @@ Resources:
       InstalledIgnore: true
       Addons:
         - Name: ack-virtual-node
-          Config:
-            Fn::Sub:
-              - '{"ECI":{"VSwitchIds":"${VSW1},${VSW2},${VSW3}","SecurityGroupId":"${SGID}"}}'
-              - VSW1:
-                  Fn::If:
-                    - CreateNewVpcCondition
-                    - Fn::GetAtt:
-                        - BusinessVSwitch1
-                        - VSwitchId
-                    - Ref: VSwitchId1
-                VSW2:
-                  Fn::If:
-                    - CreateNewVpcCondition
-                    - Fn::GetAtt:
-                        - BusinessVSwitch2
-                        - VSwitchId
-                    - Ref: VSwitchId2
-                VSW3:
-                  Fn::If:
-                    - CreateNewVpcCondition
-                    - Fn::GetAtt:
-                        - BusinessVSwitch3
-                        - VSwitchId
-                    - Ref: VSwitchId3
-                SGID:
-                  Fn::GetAtt:
-                    - ClusterDataSource
-                    - SecurityGroupId
   VirtualNodeSleep:
     Type: ALIYUN::ROS::Sleep
     DependsOn: VirtualNodeAddon
@@ -1746,7 +1718,7 @@ Resources:
       Addons:
         - Name: ack-agent-sandbox-controller
           Config: '{"workers":{"sandboxWorkers":200,"sandboxsetWorkers":10,"sandboxclaimWorkers":200},"featureGate":""}'
-          Version: 'v0.5.9'
+          Version: 'v0.5.12-release.3'
   # Step 5: Sandbox Manager
   SandboxManagerAddon:
     Type: ALIYUN::CS::ClusterAddons
@@ -1759,7 +1731,7 @@ Resources:
       InstalledIgnore: true
       Addons:
         - Name: ack-sandbox-manager
-          Version: 'v0.5.0'
+          Version: 'v0.5.2'
           Config:
             Fn::Sub:
               - '{"sandboxManager":{"replicaCount":3,"acs":${SandboxManagerScheduleToVirtualNode},"e2b":{"domain":"${E2BDomainAddress}","enableAuth":true,"adminApiKey":"${AdminApiKey}","maxTimeout":2592000},"ingress":{"className":"alb"},"controller":{"resources":{"cpu":"${SandboxManagerCpu}","memory":"${SandboxManagerMemory}"},"logLevel":5,"enableSLS":true,"maxClaimWorkers":100,"maxCreateQPS":200,"createPodInsteadOfSandbox":false,"extProcMaxConcurrency":3000}}}'

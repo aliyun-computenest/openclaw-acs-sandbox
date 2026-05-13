@@ -901,7 +901,7 @@ Resources:
           - ClusterId
       Addons:
         - Name: ack-agent-sandbox-controller
-          Version: 'v0.5.9'
+          Version: 'v0.5.12-release.3'
           Config: '{"workers":{"sandboxWorkers":200,"sandboxsetWorkers":10,"sandboxclaimWorkers":200},"featureGate":""}'
   # Step 4: Sandbox Manager
   SandboxManagerAddon:
@@ -915,7 +915,7 @@ Resources:
       InstalledIgnore: true
       Addons:
         - Name: ack-sandbox-manager
-          Version: 'v0.5.0'
+          Version: 'v0.5.2'
           Config:
             Fn::Sub:
               - '{"sandboxManager":{"replicaCount":3,"acs":false,"e2b":{"domain":"${E2BDomainAddress}","enableAuth":true,"adminApiKey":"${AdminApiKey}","maxTimeout":2592000},"ingress":{"className":"alb"},"controller":{"resources":{"cpu":"${SandboxManagerCpu}","memory":"${SandboxManagerMemory}"},"logLevel":5,"enableSLS":true,"maxClaimWorkers":100,"maxCreateQPS":200,"createPodInsteadOfSandbox":false,"extProcMaxConcurrency":3000}}}'
