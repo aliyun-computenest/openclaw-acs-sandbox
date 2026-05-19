@@ -159,7 +159,7 @@ Parameters:
     AllowedValues:
       - TwoZones
       - ThreeZones
-    Default: TwoZones
+    Default: ThreeZones
     Label:
       en: Availability Zone Count
       zh-cn: 可用区数量
@@ -1499,8 +1499,13 @@ Resources:
           - ClusterId
       InstalledIgnore: true
       ZoneIds:
-        - Ref: ZoneId1
-        - Ref: ZoneId2
+        Fn::If:
+          - EnableThirdZoneCondition
+          - - Ref: ZoneId1
+            - Ref: ZoneId2
+            - Ref: ZoneId3
+          - - Ref: ZoneId1
+            - Ref: ZoneId2
       Addons:
         - Name: alb-ingress-controller
           Config:
