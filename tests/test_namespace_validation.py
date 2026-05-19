@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SandboxNamespace 参数专项校验 — template-production.yaml
+SandboxNamespace 参数专项校验 — acs-production.yaml
 
 验证 SandboxNamespace 参数在 ROS 模板中的一致性和正确性：
   1. 参数定义与约束
@@ -18,7 +18,7 @@ import os
 from datetime import datetime
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TEMPLATE_PATH = os.path.join(PROJECT_ROOT, "template-production.yaml")
+TEMPLATE_PATH = os.path.join(PROJECT_ROOT, "acs-production.yaml")
 
 
 def load_yaml(path):
@@ -556,7 +556,7 @@ class NamespaceValidator:
             f"# SandboxNamespace 专项测试报告",
             f"",
             f"- **生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"- **模板文件**: `template-production.yaml`",
+            f"- **模板文件**: `acs-production.yaml`",
             f"- **测试类型**: 静态模板校验（Namespace 参数专项）",
             f"",
             f"## 测试结果: {verdict}",

@@ -1,5 +1,5 @@
 """
-Comprehensive validation tests for template-production.yaml
+Comprehensive validation tests for acs-production.yaml
 Covers: YAML structure, reference integrity, CIDR logic, dependency chain,
         documentation compliance, and security policy completeness.
 """
@@ -956,37 +956,15 @@ if __name__ == '__main__':
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     print("=" * 80)
-    print("VALIDATING CURRENT template-production.yaml")
+    print("VALIDATING CURRENT acs-production.yaml")
     print("=" * 80)
-    validator = TemplateValidator(os.path.join(project_root, 'template-production.yaml'))
+    validator = TemplateValidator(os.path.join(project_root, 'acs-production.yaml'))
     current_ok = validator.run_all_tests()
 
-    bak_path = os.path.join(project_root, 'template-production.yaml.bak')
     print("\n\n")
     print("=" * 80)
-    print("VALIDATING OLD template-production.yaml.bak")
-    print("=" * 80)
-    validator_bak = TemplateValidator(bak_path)
-    bak_ok = validator_bak.run_all_tests()
-
-    print("\n\n")
-    print("=" * 80)
-    print("COMPARISON SUMMARY")
+    print("SUMMARY")
     print("=" * 80)
     print(f"Current template: {len(validator.errors)} errors, {len(validator.warnings)} warnings")
-    print(f"Old template (.bak): {len(validator_bak.errors)} errors, {len(validator_bak.warnings)} warnings")
-
-    current_only_errors = set(validator.errors) - set(validator_bak.errors)
-    bak_only_errors = set(validator_bak.errors) - set(validator.errors)
-
-    if current_only_errors:
-        print(f"\n--- NEW ERRORS in current version (regressions) ---")
-        for e in sorted(current_only_errors):
-            print(f"  {e}")
-
-    if bak_only_errors:
-        print(f"\n--- FIXED ERRORS in current version (improvements) ---")
-        for e in sorted(bak_only_errors):
-            print(f"  {e}")
 
     sys.exit(0 if current_ok else 1)

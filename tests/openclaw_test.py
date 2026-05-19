@@ -266,11 +266,11 @@ class OpenClawTestCLI:
         self._header(1, "静态模版校验 — YAML 结构 / 引用 / CIDR / 安全组")
 
         # 优先校验生产模版，不存在则尝试测试模版
-        template_path = os.path.join(PROJECT_ROOT, "template-production.yaml")
+        template_path = os.path.join(PROJECT_ROOT, "acs-production.yaml")
         if not os.path.exists(template_path):
-            template_path = os.path.join(PROJECT_ROOT, "template.yaml")
+            template_path = os.path.join(PROJECT_ROOT, "acs-test.yaml")
         if not os.path.exists(template_path):
-            self._fail(f"模版文件不存在: template-production.yaml / template.yaml")
+            self._fail(f"模版文件不存在: acs-production.yaml / acs-test.yaml")
             phase.failed += 1
             self.phases.append(phase)
             return phase

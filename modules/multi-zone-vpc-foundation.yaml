@@ -1,0 +1,837 @@
+ROSTemplateFormatVersion: '2015-09-01'
+Description:
+  zh-cn: |
+    OpenClaw 生产部署使用的多可用区 VPC 网络模块。
+    支持新建或复用 VPC，并分别准备集群业务交换机和 OpenClaw 沙箱隔离交换机。
+    当 OpenClaw 隔离交换机网段不在 VPC 主网段内时，模块会自动添加所需的 VPC 附加网段。
+  en-us: |
+    Multi-zone VPC network module for OpenClaw production deployments.
+    Creates or reuses a VPC and prepares separate VSwitches for cluster business traffic and OpenClaw sandbox isolation.
+    If an OpenClaw isolated VSwitch CIDR is outside the primary VPC CIDR, the module automatically adds the required secondary CIDR block.
+Conditions:
+  CreateNewVpcCondition:
+    Fn::Equals:
+      - NewVPC
+      - Ref: VpcOption
+  UseExistingVpcCondition:
+    Fn::Equals:
+      - ExistingVPC
+      - Ref: VpcOption
+  EnableThirdZoneCondition:
+    Fn::Equals:
+      - true
+      - Ref: EnableThirdZone
+  CreateThirdZoneVpcCondition:
+    Fn::And:
+      - CreateNewVpcCondition
+      - EnableThirdZoneCondition
+  NeedSecondaryCidr1Condition:
+    Fn::And:
+      - CreateNewVpcCondition
+      - Fn::Equals:
+          - 'false'
+          - Ref: OpenClawCidr1InVpc
+  NeedSecondaryCidr2Condition:
+    Fn::And:
+      - CreateNewVpcCondition
+      - Fn::Equals:
+          - 'false'
+          - Ref: OpenClawCidr2InVpc
+  NeedSecondaryCidr3Condition:
+    Fn::And:
+      - CreateThirdZoneVpcCondition
+      - Fn::Equals:
+          - 'false'
+          - Ref: OpenClawCidr3InVpc
+Locals:
+  OpenClawCidr1InVpc:
+    Type: Eval
+    Value:
+      Fn::Jq:
+        - First
+        - '(.[0] | split("/") | .[0] | split(".") | map(tonumber)) as $vo | (.[0] | split("/") | .[1] | tonumber) as $vm | (.[1] | split("/") | .[0] | split(".") | map(tonumber)) as $so | (.[1] | split("/") | .[1] | tonumber) as $sm | ($vo[0]*16777216 + $vo[1]*65536 + $vo[2]*256 + $vo[3]) as $vi | ($so[0]*16777216 + $so[1]*65536 + $so[2]*256 + $so[3]) as $si | pow(2; 32 - $vm) as $d | if $vm > $sm then "false" else if (($vi / $d) | floor) == (($si / $d) | floor) then "true" else "false" end end'
+        - - Ref: VpcCidrBlock
+          - Ref: OpenClawVSwitchCidrBlock1
+  OpenClawCidr2InVpc:
+    Type: Eval
+    Value:
+      Fn::Jq:
+        - First
+        - '(.[0] | split("/") | .[0] | split(".") | map(tonumber)) as $vo | (.[0] | split("/") | .[1] | tonumber) as $vm | (.[1] | split("/") | .[0] | split(".") | map(tonumber)) as $so | (.[1] | split("/") | .[1] | tonumber) as $sm | ($vo[0]*16777216 + $vo[1]*65536 + $vo[2]*256 + $vo[3]) as $vi | ($so[0]*16777216 + $so[1]*65536 + $so[2]*256 + $so[3]) as $si | pow(2; 32 - $vm) as $d | if $vm > $sm then "false" else if (($vi / $d) | floor) == (($si / $d) | floor) then "true" else "false" end end'
+        - - Ref: VpcCidrBlock
+          - Ref: OpenClawVSwitchCidrBlock2
+  OpenClawCidr3InVpc:
+    Type: Eval
+    Value:
+      Fn::Jq:
+        - First
+        - '(.[0] | split("/") | .[0] | split(".") | map(tonumber)) as $vo | (.[0] | split("/") | .[1] | tonumber) as $vm | (.[1] | split("/") | .[0] | split(".") | map(tonumber)) as $so | (.[1] | split("/") | .[1] | tonumber) as $sm | ($vo[0]*16777216 + $vo[1]*65536 + $vo[2]*256 + $vo[3]) as $vi | ($so[0]*16777216 + $so[1]*65536 + $so[2]*256 + $so[3]) as $si | pow(2; 32 - $vm) as $d | if $vm > $sm then "false" else if (($vi / $d) | floor) == (($si / $d) | floor) then "true" else "false" end end'
+        - - Ref: VpcCidrBlock
+          - Ref: OpenClawVSwitchCidrBlock3
+Parameters:
+  EnableThirdZone:
+    Type: Boolean
+    Default: true
+    Label:
+      en: Enable third availability zone
+      zh-cn: 启用第三可用区
+  VpcOption:
+    Type: String
+    AllowedValues:
+      - NewVPC
+      - ExistingVPC
+    Default: NewVPC
+    Label:
+      en: Select existing or new VPC
+      zh-cn: 选择已有/新建专有网络
+    AssociationPropertyMetadata:
+      ValueLabelMapping:
+        NewVPC:
+          zh-cn: 新建专有网络
+          en: New VPC
+        ExistingVPC:
+          zh-cn: 已有专有网络
+          en: Existing VPC
+  VpcId:
+    Type: String
+    Default: ''
+    Label:
+      en: VPC ID
+      zh-cn: 专有网络VPC实例ID
+    AssociationProperty: ALIYUN::ECS::VPC::VPCId
+    Required:
+      Fn::Equals:
+        - ExistingVPC
+        - ${VpcOption}
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
+  VpcCidrBlock:
+    Type: String
+    Default: 192.168.0.0/16
+    Label:
+      en: VPC CIDR IPv4 block
+      zh-cn: 专有网络IPv4网段
+    Required:
+      Fn::Equals:
+        - NewVPC
+        - ${VpcOption}
+    AssociationProperty: ALIYUN::VPC::VPC::CidrBlock
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+  ZoneId1:
+    Type: String
+    Label:
+      en: Availability zone 1
+      zh-cn: 可用区1
+    AssociationProperty: ALIYUN::ECS::Instance::ZoneId
+    AssociationPropertyMetadata:
+      ExclusiveTo:
+        - ZoneId2
+        - ZoneId3
+  ZoneId2:
+    Type: String
+    Label:
+      en: Availability zone 2
+      zh-cn: 可用区2
+    AssociationProperty: ALIYUN::ECS::Instance::ZoneId
+    AssociationPropertyMetadata:
+      ExclusiveTo:
+        - ZoneId1
+        - ZoneId3
+  ZoneId3:
+    Type: String
+    Default: ''
+    Label:
+      en: Availability zone 3
+      zh-cn: 可用区3
+    Required:
+      Fn::Equals:
+        - true
+        - ${EnableThirdZone}
+    AssociationProperty: ALIYUN::ECS::Instance::ZoneId
+    AssociationPropertyMetadata:
+      ExclusiveTo:
+        - ZoneId1
+        - ZoneId2
+      Visible:
+        Condition:
+          Fn::Equals:
+            - true
+            - ${EnableThirdZone}
+  BusinessVSwitchId1:
+    Type: String
+    Default: ''
+    Label:
+      en: Business VSwitch ID 1
+      zh-cn: 业务交换机实例ID 1
+    Required:
+      Fn::Equals:
+        - ExistingVPC
+        - ${VpcOption}
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
+    AssociationPropertyMetadata:
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId1}
+      ExclusiveTo:
+        - BusinessVSwitchId2
+        - BusinessVSwitchId3
+        - OpenClawVSwitchId1
+        - OpenClawVSwitchId2
+        - OpenClawVSwitchId3
+      Visible:
+        Condition:
+          Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
+  BusinessVSwitchId2:
+    Type: String
+    Default: ''
+    Label:
+      en: Business VSwitch ID 2
+      zh-cn: 业务交换机实例ID 2
+    Required:
+      Fn::Equals:
+        - ExistingVPC
+        - ${VpcOption}
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
+    AssociationPropertyMetadata:
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId2}
+      ExclusiveTo:
+        - BusinessVSwitchId1
+        - BusinessVSwitchId3
+        - OpenClawVSwitchId1
+        - OpenClawVSwitchId2
+        - OpenClawVSwitchId3
+      Visible:
+        Condition:
+          Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
+  BusinessVSwitchId3:
+    Type: String
+    Default: ''
+    Label:
+      en: Business VSwitch ID 3
+      zh-cn: 业务交换机实例ID 3
+    Required:
+      Fn::And:
+        - Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
+        - Fn::Equals:
+            - true
+            - ${EnableThirdZone}
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
+    AssociationPropertyMetadata:
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId3}
+      ExclusiveTo:
+        - BusinessVSwitchId1
+        - BusinessVSwitchId2
+        - OpenClawVSwitchId1
+        - OpenClawVSwitchId2
+        - OpenClawVSwitchId3
+      Visible:
+        Condition:
+          Fn::And:
+            - Fn::Equals:
+                - ExistingVPC
+                - ${VpcOption}
+            - Fn::Equals:
+                - true
+                - ${EnableThirdZone}
+  BusinessVSwitchCidrBlock1:
+    Type: String
+    Default: 192.168.0.0/24
+    Label:
+      en: Business VSwitch CIDR block 1
+      zh-cn: 业务交换机子网网段1
+    Required:
+      Fn::Equals:
+        - NewVPC
+        - ${VpcOption}
+    AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
+    AssociationPropertyMetadata:
+      VpcCidrBlock: VpcCidrBlock
+      Visible:
+        Condition:
+          Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+  BusinessVSwitchCidrBlock2:
+    Type: String
+    Default: 192.168.1.0/24
+    Label:
+      en: Business VSwitch CIDR block 2
+      zh-cn: 业务交换机子网网段2
+    Required:
+      Fn::Equals:
+        - NewVPC
+        - ${VpcOption}
+    AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
+    AssociationPropertyMetadata:
+      VpcCidrBlock: VpcCidrBlock
+      Visible:
+        Condition:
+          Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+  BusinessVSwitchCidrBlock3:
+    Type: String
+    Default: 192.168.2.0/24
+    Label:
+      en: Business VSwitch CIDR block 3
+      zh-cn: 业务交换机子网网段3
+    Required:
+      Fn::And:
+        - Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+        - Fn::Equals:
+            - true
+            - ${EnableThirdZone}
+    AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
+    AssociationPropertyMetadata:
+      VpcCidrBlock: VpcCidrBlock
+      Visible:
+        Condition:
+          Fn::And:
+            - Fn::Equals:
+                - NewVPC
+                - ${VpcOption}
+            - Fn::Equals:
+                - true
+                - ${EnableThirdZone}
+  OpenClawVSwitchId1:
+    Type: String
+    Default: ''
+    Label:
+      en: Dedicated VSwitch ID 1
+      zh-cn: 专用交换机实例ID 1
+    Required:
+      Fn::Equals:
+        - ExistingVPC
+        - ${VpcOption}
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
+    AssociationPropertyMetadata:
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId1}
+      ExclusiveTo:
+        - OpenClawVSwitchId2
+        - OpenClawVSwitchId3
+        - BusinessVSwitchId1
+        - BusinessVSwitchId2
+        - BusinessVSwitchId3
+      Visible:
+        Condition:
+          Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
+  OpenClawVSwitchId2:
+    Type: String
+    Default: ''
+    Label:
+      en: Dedicated VSwitch ID 2
+      zh-cn: 专用交换机实例ID 2
+    Required:
+      Fn::Equals:
+        - ExistingVPC
+        - ${VpcOption}
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
+    AssociationPropertyMetadata:
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId2}
+      ExclusiveTo:
+        - OpenClawVSwitchId1
+        - OpenClawVSwitchId3
+        - BusinessVSwitchId1
+        - BusinessVSwitchId2
+        - BusinessVSwitchId3
+      Visible:
+        Condition:
+          Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
+  OpenClawVSwitchId3:
+    Type: String
+    Default: ''
+    Label:
+      en: Dedicated VSwitch ID 3
+      zh-cn: 专用交换机实例ID 3
+    Required:
+      Fn::And:
+        - Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
+        - Fn::Equals:
+            - true
+            - ${EnableThirdZone}
+    AssociationProperty: ALIYUN::ECS::VSwitch::VSwitchId
+    AssociationPropertyMetadata:
+      VpcId: ${VpcId}
+      ZoneId: ${ZoneId3}
+      ExclusiveTo:
+        - OpenClawVSwitchId1
+        - OpenClawVSwitchId2
+        - BusinessVSwitchId1
+        - BusinessVSwitchId2
+        - BusinessVSwitchId3
+      Visible:
+        Condition:
+          Fn::And:
+            - Fn::Equals:
+                - ExistingVPC
+                - ${VpcOption}
+            - Fn::Equals:
+                - true
+                - ${EnableThirdZone}
+  OpenClawVSwitchCidrBlock1:
+    Type: String
+    Default: 192.168.128.0/24
+    Label:
+      en: Dedicated VSwitch CIDR block 1
+      zh-cn: 专用交换机子网网段1
+    Required:
+      Fn::Equals:
+        - NewVPC
+        - ${VpcOption}
+    AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+  OpenClawVSwitchCidrBlock2:
+    Type: String
+    Default: 192.168.129.0/24
+    Label:
+      en: Dedicated VSwitch CIDR block 2
+      zh-cn: 专用交换机子网网段2
+    Required:
+      Fn::Equals:
+        - NewVPC
+        - ${VpcOption}
+    AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+  OpenClawVSwitchCidrBlock3:
+    Type: String
+    Default: 192.168.130.0/24
+    Label:
+      en: Dedicated VSwitch CIDR block 3
+      zh-cn: 专用交换机子网网段3
+    Required:
+      Fn::And:
+        - Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+        - Fn::Equals:
+            - true
+            - ${EnableThirdZone}
+    AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::And:
+            - Fn::Equals:
+                - NewVPC
+                - ${VpcOption}
+            - Fn::Equals:
+                - true
+                - ${EnableThirdZone}
+  ResourceNamePrefix:
+    Type: String
+    Default: multizone
+    Label:
+      en: Resource name prefix
+      zh-cn: 资源名称前缀
+Resources:
+  Vpc:
+    Type: ALIYUN::ECS::VPC
+    Condition: CreateNewVpcCondition
+    Properties:
+      CidrBlock:
+        Ref: VpcCidrBlock
+      VpcName:
+        Fn::Sub: ${ResourceNamePrefix}-vpc-${ALIYUN::StackName}
+  VpcSecondaryCidr1:
+    Type: ALIYUN::VPC::VpcCidrBlockAssociation
+    Condition: NeedSecondaryCidr1Condition
+    Properties:
+      VpcId:
+        Fn::GetAtt:
+          - Vpc
+          - VpcId
+      SecondaryCidrBlock:
+        Ref: OpenClawVSwitchCidrBlock1
+  VpcSecondaryCidr2:
+    Type: ALIYUN::VPC::VpcCidrBlockAssociation
+    Condition: NeedSecondaryCidr2Condition
+    Properties:
+      VpcId:
+        Fn::GetAtt:
+          - Vpc
+          - VpcId
+      SecondaryCidrBlock:
+        Ref: OpenClawVSwitchCidrBlock2
+  VpcSecondaryCidr3:
+    Type: ALIYUN::VPC::VpcCidrBlockAssociation
+    Condition: NeedSecondaryCidr3Condition
+    Properties:
+      VpcId:
+        Fn::GetAtt:
+          - Vpc
+          - VpcId
+      SecondaryCidrBlock:
+        Ref: OpenClawVSwitchCidrBlock3
+  BusinessVSwitch1:
+    Type: ALIYUN::ECS::VSwitch
+    Condition: CreateNewVpcCondition
+    Properties:
+      ZoneId:
+        Ref: ZoneId1
+      VpcId:
+        Fn::GetAtt:
+          - Vpc
+          - VpcId
+      CidrBlock:
+        Ref: BusinessVSwitchCidrBlock1
+      VSwitchName:
+        Fn::Sub: ${ResourceNamePrefix}-biz-vsw1-${ALIYUN::StackName}
+  BusinessVSwitch2:
+    Type: ALIYUN::ECS::VSwitch
+    Condition: CreateNewVpcCondition
+    Properties:
+      ZoneId:
+        Ref: ZoneId2
+      VpcId:
+        Fn::GetAtt:
+          - Vpc
+          - VpcId
+      CidrBlock:
+        Ref: BusinessVSwitchCidrBlock2
+      VSwitchName:
+        Fn::Sub: ${ResourceNamePrefix}-biz-vsw2-${ALIYUN::StackName}
+  BusinessVSwitch3:
+    Type: ALIYUN::ECS::VSwitch
+    Condition: CreateThirdZoneVpcCondition
+    Properties:
+      ZoneId:
+        Ref: ZoneId3
+      VpcId:
+        Fn::GetAtt:
+          - Vpc
+          - VpcId
+      CidrBlock:
+        Ref: BusinessVSwitchCidrBlock3
+      VSwitchName:
+        Fn::Sub: ${ResourceNamePrefix}-biz-vsw3-${ALIYUN::StackName}
+  OpenClawVSwitch1:
+    Type: ALIYUN::ECS::VSwitch
+    Condition: CreateNewVpcCondition
+    DependsOn: VpcSecondaryCidr1
+    Properties:
+      ZoneId:
+        Ref: ZoneId1
+      VpcId:
+        Fn::GetAtt:
+          - Vpc
+          - VpcId
+      CidrBlock:
+        Ref: OpenClawVSwitchCidrBlock1
+      VSwitchName:
+        Fn::Sub: ${ResourceNamePrefix}-isolated-vsw1-${ALIYUN::StackName}
+  OpenClawVSwitch2:
+    Type: ALIYUN::ECS::VSwitch
+    Condition: CreateNewVpcCondition
+    DependsOn: VpcSecondaryCidr2
+    Properties:
+      ZoneId:
+        Ref: ZoneId2
+      VpcId:
+        Fn::GetAtt:
+          - Vpc
+          - VpcId
+      CidrBlock:
+        Ref: OpenClawVSwitchCidrBlock2
+      VSwitchName:
+        Fn::Sub: ${ResourceNamePrefix}-isolated-vsw2-${ALIYUN::StackName}
+  OpenClawVSwitch3:
+    Type: ALIYUN::ECS::VSwitch
+    Condition: CreateThirdZoneVpcCondition
+    DependsOn: VpcSecondaryCidr3
+    Properties:
+      ZoneId:
+        Ref: ZoneId3
+      VpcId:
+        Fn::GetAtt:
+          - Vpc
+          - VpcId
+      CidrBlock:
+        Ref: OpenClawVSwitchCidrBlock3
+      VSwitchName:
+        Fn::Sub: ${ResourceNamePrefix}-isolated-vsw3-${ALIYUN::StackName}
+  VpcData:
+    Type: DATASOURCE::VPC::Vpcs
+    Properties:
+      VpcIds:
+        - Fn::If:
+            - CreateNewVpcCondition
+            - Fn::GetAtt:
+                - Vpc
+                - VpcId
+            - Ref: VpcId
+  BusinessVSwitch1Data:
+    Type: DATASOURCE::VPC::VSwitches
+    Properties:
+      VSwitchIds:
+        - Fn::If:
+            - CreateNewVpcCondition
+            - Fn::GetAtt:
+                - BusinessVSwitch1
+                - VSwitchId
+            - Ref: BusinessVSwitchId1
+  BusinessVSwitch2Data:
+    Type: DATASOURCE::VPC::VSwitches
+    Properties:
+      VSwitchIds:
+        - Fn::If:
+            - CreateNewVpcCondition
+            - Fn::GetAtt:
+                - BusinessVSwitch2
+                - VSwitchId
+            - Ref: BusinessVSwitchId2
+  BusinessVSwitch3Data:
+    Type: DATASOURCE::VPC::VSwitches
+    Condition: EnableThirdZoneCondition
+    Properties:
+      VSwitchIds:
+        - Fn::If:
+            - CreateNewVpcCondition
+            - Fn::GetAtt:
+                - BusinessVSwitch3
+                - VSwitchId
+            - Ref: BusinessVSwitchId3
+  OpenClawVSwitch1Data:
+    Type: DATASOURCE::VPC::VSwitches
+    Properties:
+      VSwitchIds:
+        - Fn::If:
+            - CreateNewVpcCondition
+            - Fn::GetAtt:
+                - OpenClawVSwitch1
+                - VSwitchId
+            - Ref: OpenClawVSwitchId1
+  OpenClawVSwitch2Data:
+    Type: DATASOURCE::VPC::VSwitches
+    Properties:
+      VSwitchIds:
+        - Fn::If:
+            - CreateNewVpcCondition
+            - Fn::GetAtt:
+                - OpenClawVSwitch2
+                - VSwitchId
+            - Ref: OpenClawVSwitchId2
+  OpenClawVSwitch3Data:
+    Type: DATASOURCE::VPC::VSwitches
+    Condition: EnableThirdZoneCondition
+    Properties:
+      VSwitchIds:
+        - Fn::If:
+            - CreateNewVpcCondition
+            - Fn::GetAtt:
+                - OpenClawVSwitch3
+                - VSwitchId
+            - Ref: OpenClawVSwitchId3
+Outputs:
+  VpcId:
+    Value:
+      Fn::Jq:
+        - First
+        - .[0].VpcId
+        - Fn::GetAtt:
+            - VpcData
+            - Vpcs
+  VpcCidrBlock:
+    Value:
+      Fn::Jq:
+        - First
+        - .[0].CidrBlock
+        - Fn::GetAtt:
+            - VpcData
+            - Vpcs
+  BusinessVSwitchId1:
+    Value:
+      Fn::Jq:
+        - First
+        - .[0].VSwitchId
+        - Fn::GetAtt:
+            - BusinessVSwitch1Data
+            - VSwitches
+  BusinessVSwitchId2:
+    Value:
+      Fn::Jq:
+        - First
+        - .[0].VSwitchId
+        - Fn::GetAtt:
+            - BusinessVSwitch2Data
+            - VSwitches
+  BusinessVSwitchId3:
+    Value:
+      Fn::If:
+        - EnableThirdZoneCondition
+        - Fn::Jq:
+            - First
+            - .[0].VSwitchId
+            - Fn::GetAtt:
+                - BusinessVSwitch3Data
+                - VSwitches
+        - ''
+  BusinessVSwitchCidrBlock1:
+    Value:
+      Fn::Jq:
+        - First
+        - .[0].CidrBlock
+        - Fn::GetAtt:
+            - BusinessVSwitch1Data
+            - VSwitches
+  BusinessVSwitchCidrBlock2:
+    Value:
+      Fn::Jq:
+        - First
+        - .[0].CidrBlock
+        - Fn::GetAtt:
+            - BusinessVSwitch2Data
+            - VSwitches
+  BusinessVSwitchCidrBlock3:
+    Value:
+      Fn::If:
+        - EnableThirdZoneCondition
+        - Fn::Jq:
+            - First
+            - .[0].CidrBlock
+            - Fn::GetAtt:
+                - BusinessVSwitch3Data
+                - VSwitches
+        - ''
+  OpenClawVSwitchId1:
+    Value:
+      Fn::Jq:
+        - First
+        - .[0].VSwitchId
+        - Fn::GetAtt:
+            - OpenClawVSwitch1Data
+            - VSwitches
+  OpenClawVSwitchId2:
+    Value:
+      Fn::Jq:
+        - First
+        - .[0].VSwitchId
+        - Fn::GetAtt:
+            - OpenClawVSwitch2Data
+            - VSwitches
+  OpenClawVSwitchId3:
+    Value:
+      Fn::If:
+        - EnableThirdZoneCondition
+        - Fn::Jq:
+            - First
+            - .[0].VSwitchId
+            - Fn::GetAtt:
+                - OpenClawVSwitch3Data
+                - VSwitches
+        - ''
+  OpenClawVSwitchCidrBlock1:
+    Value:
+      Fn::Jq:
+        - First
+        - .[0].CidrBlock
+        - Fn::GetAtt:
+            - OpenClawVSwitch1Data
+            - VSwitches
+  OpenClawVSwitchCidrBlock2:
+    Value:
+      Fn::Jq:
+        - First
+        - .[0].CidrBlock
+        - Fn::GetAtt:
+            - OpenClawVSwitch2Data
+            - VSwitches
+  OpenClawVSwitchCidrBlock3:
+    Value:
+      Fn::If:
+        - EnableThirdZoneCondition
+        - Fn::Jq:
+            - First
+            - .[0].CidrBlock
+            - Fn::GetAtt:
+                - OpenClawVSwitch3Data
+                - VSwitches
+        - ''
+  OpenClawVSwitchIds:
+    Value:
+      Fn::Join:
+        - ','
+        - Fn::ListMerge:
+            - - Fn::Jq:
+                  - First
+                  - .[0].VSwitchId
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch1Data
+                      - VSwitches
+              - Fn::Jq:
+                  - First
+                  - .[0].VSwitchId
+                  - Fn::GetAtt:
+                      - OpenClawVSwitch2Data
+                      - VSwitches
+            - Fn::If:
+                - EnableThirdZoneCondition
+                - - Fn::Jq:
+                      - First
+                      - .[0].VSwitchId
+                      - Fn::GetAtt:
+                          - OpenClawVSwitch3Data
+                          - VSwitches
+                - []
+  VSwitchId:
+    Value:
+      Fn::Jq:
+        - First
+        - .[0].VSwitchId
+        - Fn::GetAtt:
+            - BusinessVSwitch1Data
+            - VSwitches
+  VSwitchIdSecondary:
+    Value:
+      Fn::Jq:
+        - First
+        - .[0].VSwitchId
+        - Fn::GetAtt:
+            - BusinessVSwitch2Data
+            - VSwitches
+  VSwitchIdThirdly:
+    Value:
+      Fn::If:
+        - EnableThirdZoneCondition
+        - Fn::Jq:
+            - First
+            - .[0].VSwitchId
+            - Fn::GetAtt:
+                - BusinessVSwitch3Data
+                - VSwitches
+        - ''

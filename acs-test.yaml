@@ -269,6 +269,52 @@ Parameters:
           Fn::Equals:
             - ExistingVPC
             - ${VpcOption}
+  OpenClawVSwitchId1:
+    Type: String
+    Label:
+      en: Dedicated VSwitch ID 1
+      zh-cn: OpenClaw 专用交换机ID 1
+    Description:
+      en: Dedicated isolated VSwitch in Zone 1.
+      zh-cn: OpenClaw 隔离网段交换机（可用区1）。
+    Required: true
+    Default: null
+    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    AssociationPropertyMetadata:
+      VpcId: '${VpcId}'
+      ZoneId: '${ZoneId1}'
+      ExclusiveTo:
+        - OpenClawVSwitchId2
+        - VSwitchId1
+        - VSwitchId2
+      Visible:
+        Condition:
+          Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
+  OpenClawVSwitchId2:
+    Type: String
+    Label:
+      en: Dedicated VSwitch ID 2
+      zh-cn: OpenClaw 专用交换机ID 2
+    Description:
+      en: Dedicated isolated VSwitch in Zone 2.
+      zh-cn: OpenClaw 隔离网段交换机（可用区2）。
+    Required: true
+    Default: null
+    AssociationProperty: 'ALIYUN::ECS::VSwitch::VSwitchId'
+    AssociationPropertyMetadata:
+      VpcId: '${VpcId}'
+      ZoneId: '${ZoneId2}'
+      ExclusiveTo:
+        - OpenClawVSwitchId1
+        - VSwitchId1
+        - VSwitchId2
+      Visible:
+        Condition:
+          Fn::Equals:
+            - ExistingVPC
+            - ${VpcOption}
   EnableCustomAlbVSwitch:
     Type: Boolean
     Label:
@@ -378,6 +424,40 @@ Parameters:
     AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
     AssociationPropertyMetadata:
       VpcCidrBlock: VpcCidrBlock
+      Visible:
+        Condition:
+          Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+  OpenClawVSwitchCidrBlock1:
+    Type: String
+    Label:
+      en: Dedicated VSwitch CIDR Block 1
+      zh-cn: OpenClaw 专用交换机网段 1
+    Description:
+      zh-cn: OpenClaw 隔离网段（可用区1）。可使用 VPC 主网段内的子网，也可使用独立网段作为 VPC 附加 CIDR。
+      en: Dedicated isolated CIDR in Zone 1. Can be a subnet within the primary VPC CIDR or a secondary VPC CIDR.
+    Default: 192.168.128.0/24
+    Required: true
+    AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
+    AssociationPropertyMetadata:
+      Visible:
+        Condition:
+          Fn::Equals:
+            - NewVPC
+            - ${VpcOption}
+  OpenClawVSwitchCidrBlock2:
+    Type: String
+    Label:
+      en: Dedicated VSwitch CIDR Block 2
+      zh-cn: OpenClaw 专用交换机网段 2
+    Description:
+      zh-cn: OpenClaw 隔离网段（可用区2）。可使用 VPC 主网段内的子网，也可使用独立网段作为 VPC 附加 CIDR。
+      en: Dedicated isolated CIDR in Zone 2. Can be a subnet within the primary VPC CIDR or a secondary VPC CIDR.
+    Default: 192.168.129.0/24
+    Required: true
+    AssociationProperty: ALIYUN::VPC::VSwitch::CidrBlock
+    AssociationPropertyMetadata:
       Visible:
         Condition:
           Fn::Equals:
@@ -718,28 +798,37 @@ Resources:
       Workspace:
         Ref: CmsWorkspaceName
   VpcModule:
-    Type: MODULE::ACS::ComputeNest::VpcAndVSwitch
+    Type: MODULE::SHARE::1853370294850618::MultiZoneVpcFoundation
     Version: default
     Properties:
-      EnableDualZones: true
-      VSwitchCidrBlockSecondary:
-        Ref: VSwitchCidrBlock2
-      VpcId:
-        Ref: VpcId
-      ZoneIdSecondary:
-        Ref: ZoneId2
-      VSwitchCidrBlock:
-        Ref: VSwitchCidrBlock1
-      VpcCidrBlock:
-        Ref: VpcCidrBlock
-      ZoneId:
-        Ref: ZoneId1
-      VSwitchIdSecondary:
-        Ref: VSwitchId2
-      VSwitchId:
-        Ref: VSwitchId1
+      EnableThirdZone: false
       VpcOption:
         Ref: VpcOption
+      VpcId:
+        Ref: VpcId
+      VpcCidrBlock:
+        Ref: VpcCidrBlock
+      ZoneId1:
+        Ref: ZoneId1
+      ZoneId2:
+        Ref: ZoneId2
+      BusinessVSwitchId1:
+        Ref: VSwitchId1
+      BusinessVSwitchId2:
+        Ref: VSwitchId2
+      BusinessVSwitchCidrBlock1:
+        Ref: VSwitchCidrBlock1
+      BusinessVSwitchCidrBlock2:
+        Ref: VSwitchCidrBlock2
+      OpenClawVSwitchId1:
+        Ref: OpenClawVSwitchId1
+      OpenClawVSwitchId2:
+        Ref: OpenClawVSwitchId2
+      OpenClawVSwitchCidrBlock1:
+        Ref: OpenClawVSwitchCidrBlock1
+      OpenClawVSwitchCidrBlock2:
+        Ref: OpenClawVSwitchCidrBlock2
+      ResourceNamePrefix: openclaw-test
   Sleep:
     Type: ALIYUN::ROS::Sleep
     DependsOn:
@@ -774,19 +863,19 @@ Resources:
       VSwitchIdSecondary:
         Fn::GetAtt:
           - VpcModule
-          - VSwitchIdSecondary
+          - BusinessVSwitchId2
       VSwitchId:
         Fn::GetAtt:
           - VpcModule
-          - VSwitchId
+          - BusinessVSwitchId1
       PodVSwitchId:
         Fn::GetAtt:
           - VpcModule
-          - VSwitchId
+          - OpenClawVSwitchId1
       PodVSwitchIdSecondary:
         Fn::GetAtt:
           - VpcModule
-          - VSwitchIdSecondary
+          - OpenClawVSwitchId2
       WorkerSystemDiskCategory:
         Ref: WorkerSystemDiskCategory
       LoginPassword:
@@ -829,7 +918,7 @@ Resources:
                     - Ref: AlbVSwitchId1
                     - Fn::GetAtt:
                         - VpcModule
-                        - VSwitchId
+                        - BusinessVSwitchId1
                 ZoneId2:
                   Ref: ZoneId2
                 VswitchId2:
@@ -838,7 +927,7 @@ Resources:
                     - Ref: AlbVSwitchId2
                     - Fn::GetAtt:
                         - VpcModule
-                        - VSwitchIdSecondary
+                        - BusinessVSwitchId2
                 AddressType:
                   Fn::If:
                     - EnablePublicIpConditions
@@ -1005,6 +1094,7 @@ Resources:
                   labels:
                     app: openclaw
                     alibabacloud.com/acs: "true"
+                    alibabacloud.com/compute-class: agent-sandbox
                   annotations:
                     image.alibabacloud.com/enable-image-cache: "true"
                     network.alibabacloud.com/network-policy-mode: "traffic-policy"
@@ -1157,6 +1247,7 @@ Resources:
                   labels:
                     app: openclaw
                     alibabacloud.com/acs: "true"
+                    alibabacloud.com/compute-class: agent-sandbox
                   annotations:
                     image.alibabacloud.com/enable-image-cache: "true"
                     network.alibabacloud.com/network-policy-mode: "traffic-policy"
@@ -1687,12 +1778,16 @@ Metadata:
           - VpcId
           - VSwitchId1
           - VSwitchId2
+          - OpenClawVSwitchId1
+          - OpenClawVSwitchId2
           - EnableCustomAlbVSwitch
           - AlbVSwitchId1
           - AlbVSwitchId2
           - VpcCidrBlock
           - VSwitchCidrBlock1
           - VSwitchCidrBlock2
+          - OpenClawVSwitchCidrBlock1
+          - OpenClawVSwitchCidrBlock2
         Label:
           en: Basic Configuration
           zh-cn: 基础配置
@@ -1730,4 +1825,3 @@ Metadata:
         Label:
           en: CMS Observability
           zh-cn: 云监控可观测性配置
-

@@ -309,8 +309,8 @@ def _upload_template_to_oss(template_body: str, region_id: str) -> str:
 
     # 候选 Bucket 列表（按优先级）
     candidate_buckets = [
-        f"applicationmanager-{region_id}-1563457855438522",
-        "applicationmanager-cn-hangzhou-1563457855438522",
+        f"applicationmanager-{region_id}-1853370294850618",
+        "applicationmanager-cn-hangzhou-1853370294850618",
     ]
 
     oss_key = f"ros-templates/ros-template-{int(time.time())}.yaml"
@@ -959,15 +959,15 @@ def main():
         epilog="""
 示例用法:
   # 方式一：使用已配置的阿里云 CLI 凭证（推荐）
-  python ros_stack_manager.py create --stack-name my-stack --template template.yaml --parameters parameters.yaml --region cn-beijing
+  python ros_stack_manager.py create --stack-name my-stack --template acs-test.yaml --parameters parameters.yaml --region cn-beijing
 
   # 方式二：通过环境变量提供 AK/SK
   export ALIYUN_ACCESS_KEY_ID=YOUR_AK
   export ALIYUN_ACCESS_KEY_SECRET=YOUR_SK
-  python ros_stack_manager.py create --stack-name my-stack --template template.yaml --region cn-beijing
+  python ros_stack_manager.py create --stack-name my-stack --template acs-test.yaml --region cn-beijing
 
   # 创建 Stack 并获取 kubeconfig
-  python ros_stack_manager.py create --stack-name my-stack --template template.yaml --kubeconfig --region cn-beijing
+  python ros_stack_manager.py create --stack-name my-stack --template acs-test.yaml --kubeconfig --region cn-beijing
 
   # 单独获取 kubeconfig
   python ros_stack_manager.py kubeconfig --cluster-id cxxx --region cn-beijing
