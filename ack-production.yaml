@@ -181,7 +181,7 @@ Parameters:
     Default: Null
     Required: true
     Description:
-      zh-cn: 第一个可用区。2 可用区和 3 可用区部署都必须选择。
+      zh-cn: 第一个可用区。
       en: First availability zone. Required for both 2-zone and 3-zone deployments.
     AssociationPropertyMetadata:
       ExclusiveTo:
@@ -196,7 +196,7 @@ Parameters:
     Default: Null
     Required: true
     Description:
-      zh-cn: 第二个可用区。2 可用区和 3 可用区部署都必须选择，且不能与可用区1重复。
+      zh-cn: 第二个可用区。不能与可用区1重复。
       en: Second availability zone. Required for both 2-zone and 3-zone deployments and must differ from Zone 1.
     AssociationPropertyMetadata:
       ExclusiveTo:
@@ -1418,13 +1418,8 @@ Resources:
           - ClusterId
       InstalledIgnore: true
       ZoneIds:
-        Fn::ListMerge:
-          - - Ref: ZoneId1
-            - Ref: ZoneId2
-          - Fn::If:
-              - EnableThirdZoneCondition
-              - - Ref: ZoneId3
-              - []
+        - Ref: ZoneId1
+        - Ref: ZoneId2
       Addons:
         - Name: alb-ingress-controller
           Config:
