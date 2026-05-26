@@ -4,17 +4,30 @@ This document describes the **Production** deployment scheme for OpenClaw Enterp
 
 ## Overview
 
-Production deployment is based on the **ACK Managed Cluster + VirtualNode (ACS)** architecture and supports **3-AZ high availability** and **Poseidon TrafficPolicy network isolation**.
+Production deployment is based on the **ACK Managed Cluster + VirtualNode (ACS)** or **pure ACS Cluster** architecture, supporting **flexible 2 or 3 availability zone deployment** and **Poseidon TrafficPolicy network isolation**.
 
-- **Cluster Type**: ACK Pro managed cluster + VirtualNode (Sandbox Pods run on ACS elastic compute)
-- **Node Management**: ECS node pool runs control components (sandbox-manager, etc.); Sandbox Pods scale elastically on demand
-- **Network Isolation**: Poseidon TrafficPolicy + Security Group multi-layer isolation
-- **High Availability**: 3-AZ deployment, 6 VSwitches (3 for business, 3 for OpenClaw isolation)
+### Two Cluster Modes
+
+| Mode | Use Case | Description |
+|------|----------|-------------|
+| **ACK + VirtualNode** | ECS node pool + ACS elastic Sandbox | ECS nodes run control components; Sandbox Pods run on ACS virtual nodes |
+| **Pure ACS** | Fully Serverless, zero ops | All workloads run on ACS Serverless compute |
+
+### Availability Zone Selection
+
+You can choose **2 AZs** or **3 AZs** during deployment. The template **dynamically renders** the corresponding parameter form based on your selection:
+
+| AZ Count | VSwitch Configuration | Use Case |
+|----------|----------------------|----------|
+| **2 AZs** | 4 VSwitches (2 business + 2 OpenClaw isolation) | Regions with limited AZs or cost-sensitive scenarios |
+| **3 AZs** | 6 VSwitches (3 business + 3 OpenClaw isolation) | Production environments with strict HA requirements |
+
+> 💡 When 2 AZs is selected, all Zone 3 related parameters (Zone 3, business VSwitch 3, OpenClaw isolation VSwitch 3) are automatically hidden—no configuration needed.
 
 ### Network Architecture
 
-- **3 Availability Zones**: Cross-AZ high availability deployment
-- **6 VSwitches**: 3 business VSwitches + 3 OpenClaw isolation VSwitches
+- **Multi-AZ**: 2 or 3 availability zone cross-AZ high availability deployment
+- **Business/Isolation Network Separation**: Each AZ has its own business VSwitch and OpenClaw isolation VSwitch
 - **Standalone NAT Gateway**: OpenClaw sandboxes use a dedicated NAT Gateway and EIP for outbound traffic
 - **ALB Ingress**: ALB load balancer as the ingress gateway
 - **PrivateZone**: Wildcard domain name resolution within the VPC
@@ -24,6 +37,7 @@ Production deployment is based on the **ACK Managed Cluster + VirtualNode (ACS)*
 Production deployment achieves sandbox network isolation through a multi-layer security policy:
 
 **Layer 1: Enterprise Security Group**
+- Enterprise-type security group; Pods within the same group cannot communicate by default
 
 **Layer 2: Poseidon TrafficPolicy**
 - Fine-grained network policies at the Kubernetes layer via GlobalTrafficPolicy
@@ -69,40 +83,58 @@ This step requires relatively high-risk permissions (administrator access to clo
 
 ### Step 2: Select Template
 
-At the top of the creation page, select the **Production Environment** template:
+At the top of the creation page, select the template based on your cluster type:
 
-- **Test Environment**: Dual-AZ, suitable for quick verification
-- **Production Environment**: 3-AZ high availability with network isolation, suitable for production use. (If you need a dual-AZ production environment, select the "Production Environment - Dual-AZ Edition" template.)
+| Template | Description |
+|----------|-------------|
+| **ACK Production** | ACK Pro cluster + VirtualNode, ECS node pool runs control components |
+| **ACS Production** | Pure ACS Serverless cluster, fully managed and zero ops |
+
+Both templates support **2 AZ / 3 AZ** dynamic switching.
 
 ### Step 3: Configure VPC and Availability Zones
 
 | Parameter | Description | Default |
 |------|------|--------|
-| **Zone 1/2/3** | Select three different availability zones | Choose based on region |
+| **Availability Zone Count** | Select 2 AZs or 3 AZs; the page dynamically renders corresponding parameters | 3 AZs |
+| **Zone 1** | First availability zone (required) | Choose based on region |
+| **Zone 2** | Second availability zone, must differ from Zone 1 (required) | Choose based on region |
+| **Zone 3** | Third availability zone, must differ from Zone 1/2 (only shown when 3 AZs is selected) | Choose based on region |
 | **Select existing / new VPC** | Create a new VPC or use an existing one | Create new VPC |
-| **VPC IPv4 CIDR block** | VPC primary CIDR block | `192.168.0.0/16` |
+| **VPC IPv4 CIDR block** | VPC primary CIDR block (only shown for new VPC) | `192.168.0.0/16` |
 
-### Step 4: Configure Control VSwitches
+> 💡 After selecting **2 AZs**, the Zone 3 input is automatically hidden; the corresponding business VSwitch 3 and OpenClaw isolation VSwitch 3 parameters are also hidden.
 
-Configure a business VSwitch CIDR block for each of the 3 availability zones, used for cluster nodes and control components. If you select an existing VPC that has an additional CIDR block, use the VSwitch corresponding to the VPC primary CIDR block:
+### Step 4: Configure Business VSwitches
 
-| Parameter | Description | Default |
-| ------ | ----------- | -------- |
-| **Control VSwitch subnet CIDR 1** | Zone 1 CIDR block | `192.168.0.0/24` |
-| **Control VSwitch subnet CIDR 2** | Zone 2 CIDR block | `192.168.1.0/24` |
-| **Control VSwitch subnet CIDR 3** | Zone 3 CIDR block | `192.168.2.0/24` |
+Configure a business VSwitch for each availability zone, used for cluster nodes and control components.
 
-### Step 5: Configure OpenClaw VSwitches
+- **New VPC scenario**: Enter the CIDR block; the system creates the VSwitch automatically
+- **Existing VPC scenario**: Select an existing VSwitch ID (if the VPC has additional CIDR blocks, select the VSwitch under the primary CIDR)
 
-Configure dedicated VSwitches for OpenClaw sandboxes to achieve physical isolation from the business network:
+| Parameter | Description | Default | Visible Condition |
+|------|------|--------|---------|
+| **Business VSwitch CIDR 1** | Zone 1 CIDR block | `192.168.0.0/24` | New VPC |
+| **Business VSwitch CIDR 2** | Zone 2 CIDR block | `192.168.1.0/24` | New VPC |
+| **Business VSwitch CIDR 3** | Zone 3 CIDR block | `192.168.2.0/24` | New VPC + 3 AZs |
+| **Business VSwitch ID 1** | Existing VSwitch in Zone 1 | - | Existing VPC |
+| **Business VSwitch ID 2** | Existing VSwitch in Zone 2 | - | Existing VPC |
+| **Business VSwitch ID 3** | Existing VSwitch in Zone 3 | - | Existing VPC + 3 AZs |
 
-| Parameter | Description | Default |
-| ------ | ------ | -------------------- |
-| **OpenClaw dedicated VSwitch CIDR 1** | Zone 1 CIDR block | `192.168.120.0/24` |
-| **OpenClaw dedicated VSwitch CIDR 2** | Zone 2 CIDR block | `192.168.121.0/24` |
-| **OpenClaw dedicated VSwitch CIDR 3** | Zone 3 CIDR block | `192.168.122.0/24` |
+### Step 5: Configure OpenClaw Isolation VSwitches
 
-> OpenClaw VSwitches support additional CIDR blocks. The 3 OpenClaw VSwitch CIDR blocks must be different from each other.
+Configure dedicated isolation VSwitches for OpenClaw sandboxes to achieve physical isolation from the business network:
+
+| Parameter | Description | Default | Visible Condition |
+|------|------|--------|---------|
+| **OpenClaw isolation VSwitch CIDR 1** | Zone 1 isolation CIDR | `192.168.128.0/24` | New VPC |
+| **OpenClaw isolation VSwitch CIDR 2** | Zone 2 isolation CIDR | `192.168.129.0/24` | New VPC |
+| **OpenClaw isolation VSwitch CIDR 3** | Zone 3 isolation CIDR | `192.168.130.0/24` | New VPC + 3 AZs |
+| **OpenClaw isolation VSwitch ID 1** | Existing isolation VSwitch in Zone 1 | - | Existing VPC |
+| **OpenClaw isolation VSwitch ID 2** | Existing isolation VSwitch in Zone 2 | - | Existing VPC |
+| **OpenClaw isolation VSwitch ID 3** | Existing isolation VSwitch in Zone 3 | - | Existing VPC + 3 AZs |
+
+> ⚠️ OpenClaw isolation VSwitches support using VPC additional CIDR blocks (e.g., `10.10.0.0/18`); the system automatically adds them as VPC secondary CIDRs. Each OpenClaw VSwitch must be unique and cannot be shared with business VSwitches.
 
 ### Step 6: Configure Cluster Parameters
 
