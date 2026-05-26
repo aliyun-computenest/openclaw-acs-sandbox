@@ -164,8 +164,15 @@ Parameters:
       en: Availability Zone Count
       zh-cn: 可用区数量
     Description:
-      zh-cn: 选择 TwoZones（2 可用区）时部署前两个可用区；选择 ThreeZones（3 可用区）时需要同时配置第三个可用区和第三组交换机。
-      en: Select TwoZones for two availability zones. Select ThreeZones to also configure the third availability zone and the third VSwitch group.
+      zh-cn: >-
+        请选择本次生产部署的可用区数量。<font color='red'><b>选择 2 可用区时，只需配置可用区1/2及对应两组业务交换机、OpenClaw 隔离交换机；选择 3 可用区时，必须同时配置可用区3、第三组业务交换机和第三组 OpenClaw 隔离交换机，否则部署会因三可用区参数不完整而失败。</b></font>
+      en: >-
+        Select the number of availability zones for this production deployment.
+        <font color='red'><b>For 2 availability zones, configure only Zone 1/2
+        and the corresponding two business and OpenClaw isolated VSwitches. For
+        3 availability zones, Zone 3, the third business VSwitch, and the third
+        OpenClaw isolated VSwitch must all be configured, otherwise deployment
+        may fail due to incomplete 3-zone parameters.</b></font>
     AssociationPropertyMetadata:
       ValueLabelMapping:
         TwoZones:
@@ -212,14 +219,8 @@ Parameters:
         - ThreeZones
         - ${AvailabilityZoneCount}
     Description:
-      zh-cn: >-
-        第三可用区，不能与可用区1/2重复。<font color='red'><b>选择 TwoZones（2 可用区）时无需配置；
-        选择 ThreeZones（3 可用区）时必须配置，并需要同时配置第三组业务交换机和第三组 OpenClaw 沙箱隔离交换机。</b></font>
-      en: >-
-        Third availability zone. It must differ from Zone 1 and Zone 2. It is not
-        required when TwoZones is selected. When ThreeZones is selected, configure it
-        together with the third business VSwitch and the third OpenClaw sandbox
-        isolation VSwitch.
+      zh-cn: 第三可用区，不能与可用区1/2重复。
+      en: Third availability zone. It must differ from Zone 1 and Zone 2.
     AssociationPropertyMetadata:
       ExclusiveTo:
         - ZoneId1
@@ -1885,7 +1886,6 @@ Resources:
                   labels:
                     app: openclaw
                     alibabacloud.com/acs: "true"
-                    alibabacloud.com/compute-class: agent-sandbox
                   annotations:
                     image.alibabacloud.com/enable-image-cache: "true"
                     network.alibabacloud.com/vswitch-ids: "${OpenClawVSwitchIds}"
@@ -2046,7 +2046,6 @@ Resources:
                   labels:
                     app: openclaw
                     alibabacloud.com/acs: "true"
-                    alibabacloud.com/compute-class: agent-sandbox
                   annotations:
                     image.alibabacloud.com/enable-image-cache: "true"
                     network.alibabacloud.com/vswitch-ids: "${OpenClawVSwitchIds}"
@@ -2231,27 +2230,31 @@ Resources:
           - AckOrAcsCluster
           - ClusterId
       DefaultNamespace: sandbox-system
-      YamlContent: |
-        apiVersion: batch/v1
-        kind: Job
-        metadata:
-          name: edit-alb-config-job
-        spec:
-          template:
+      YamlContent:
+        Fn::Sub:
+          - |
+            apiVersion: batch/v1
+            kind: Job
             metadata:
               name: edit-alb-config-job
             spec:
-              serviceAccountName: edit-alb-config-sa
-              restartPolicy: Never
-              containers:
-              - name: edit-alb-config-job
-                image: compute-nest-registry.cn-hangzhou.cr.aliyuncs.com/public/dtzar/helm-kubectl:3.12.0
-                command: [ "/bin/sh", "-c", "--" ]
-                args:
-                  - |
-                    set -x
-                    echo "开始修改 AlbConfig 资源：alb"
-                    kubectl patch albconfig.alibabacloud.com alb --type='json' -p='[{"op":"add","path":"/spec/listeners/-","value":{"port":443,"protocol":"HTTPS","requestTimeout":600}}]'
+              template:
+                metadata:
+                  name: edit-alb-config-job
+                spec:
+                  serviceAccountName: edit-alb-config-sa
+                  restartPolicy: Never
+                  containers:
+                  - name: edit-alb-config-job
+                    image: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/helm-kubectl:4.2
+                    command: [ "/bin/sh", "-c", "--" ]
+                    args:
+                      - |
+                        set -x
+                        echo "开始修改 AlbConfig 资源：alb"
+                        kubectl patch albconfig.alibabacloud.com alb --type='json' -p='[{"op":"add","path":"/spec/listeners/-","value":{"port":443,"protocol":"HTTPS","requestTimeout":600}}]'
+          - RegionId:
+              Ref: ALIYUN::Region
   # ========== 测试 Pod ==========
   TestPod:
     Type: ALIYUN::CS::ClusterApplication
@@ -2278,15 +2281,41 @@ Resources:
             spec:
               containers:
                 - name: acs-sandbox-test-pod
-                  image: {{ computenest::acrimage::acs-sandbox-test-pod }}
+                  image: registry-${RegionId}-vpc.ack.aliyuncs.com/ack-demo/python:3.12.13-alpine
                   imagePullPolicy: Always
+                  workingDir: /app
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - |
+                      set -eux
+
+                      if [ -z "$TESTPOD_PIP_BUNDLE_URL" ]; then
+                        echo "TESTPOD_PIP_BUNDLE_URL is empty; check Compute Nest file artifact association for key testpod-pip-packages" >&2
+                        exit 1
+                      fi
+
+                      APP_DIR=/app
+                      mkdir -p "$APP_DIR"
+
+                      echo "Downloading TestPod pip bundle from Compute Nest file artifact"
+                      wget -O /tmp/testpod-pip-packages.tar.gz "$TESTPOD_PIP_BUNDLE_URL"
+                      tar -xzf /tmp/testpod-pip-packages.tar.gz -C "$APP_DIR"
+                      BUNDLE_DIR="$APP_DIR" APP_DIR="$APP_DIR" CERT_FILE="$APP_DIR/ca-fullchain.pem" \
+                        sh "$APP_DIR/install-testpod-bundle.sh"
+
+                      echo "TestPod is ready; keeping container alive for manual verification"
+                      exec sleep infinity
                   env:
+                    - name: TESTPOD_PIP_BUNDLE_URL
+                      value: "{{ computenest::file::testpod-pip-packages }}"
                     - name: E2B_API_KEY
                       value: ${AdminApiKey}
                     - name: E2B_DOMAIN
                       value: ${E2BDomainAddress}
-                    - name: SSL_CERT_FILE
+                    - name: SSL_CERT_CONTENT
                       value: "${TLSCert}"
+                    - name: SSL_CERT_FILE
+                      value: /app/ca-fullchain.pem
               restartPolicy: Never
           - SandboxNamespace:
               Ref: SandboxNamespace
@@ -2296,6 +2325,8 @@ Resources:
               Ref: E2BDomainAddress
             TLSCert:
               Ref: TLSCert
+            RegionId:
+              Ref: ALIYUN::Region
   # ========== PrivateZone — NewVPC 场景：创建全新 Zone ==========
   PrivateZone:
     Condition: EnablePrivateZoneForNewVpcCondition

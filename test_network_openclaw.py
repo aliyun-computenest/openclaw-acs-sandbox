@@ -7,7 +7,7 @@ import traceback
 from e2b_code_interpreter import Sandbox
 
 NETWORK_TEST_SCRIPT = r"""#!/bin/bash
-# OpenClaw Sandbox 网络隔离测试脚本（直接在 Pod 内执行）
+# OpenClaw Sandbox 网络隔a离测试脚本（直接在 Pod 内执行）
 
 TIMEOUT=5
 
