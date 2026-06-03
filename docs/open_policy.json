@@ -9,8 +9,6 @@
         "ram:AttachPolicyToRole",
         "bss:*",
         "bssapi:*",
-        "acm:*",
-        "dataexchange:*",
         "log:*",
         "pvtz:*",
         "cs:*",
