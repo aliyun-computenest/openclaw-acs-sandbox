@@ -661,11 +661,9 @@ Parameters:
       en: Service CIDR
     AssociationProperty: ALIYUN::CS::ManagedKubernetesCluster::ServiceCidr
     AssociationPropertyMetadata:
-      ContainerCidr: 172.20.0.0/20
       VpcId: '${VpcId}'
       RegionId: ${RegionId}
       ClusterType: ManagedKubernetes
-      NodeCidrMask: 26
       Addons:
         - name: terway
     Default: 172.16.0.0/16
