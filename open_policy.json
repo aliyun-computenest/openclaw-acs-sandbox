@@ -1,0 +1,21 @@
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ram:CreateRole",
+        "ram:CreateServiceLinkedRole",
+        "ram:AttachPolicyToRole",
+        "bss:*",
+        "bssapi:*",
+        "log:*",
+        "pvtz:*",
+        "cs:*",
+        "alb:*",
+        "acc:*"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
