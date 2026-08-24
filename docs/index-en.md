@@ -37,6 +37,14 @@ generate-certificates.sh -d myapp.your.domain.com
 generate-certificates.sh --domain api.your.domain.com --days 730
 '''
 
+This script requires a recent OpenSSL version that supports `-rand_serial`. Older OpenSSL and LibreSSL versions don't support it. `sudo` may also change `PATH` and invoke an older version.
+
+If you see `unknown option -rand_serial`, install OpenSSL 3:
+
+```bash
+brew install openssl@3
+```
+
 Example of a command to generate a certificate:
 
 plaintext
