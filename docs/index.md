@@ -40,6 +40,14 @@ Examples:
   generate-certificates.sh --domain api.your.domain.com --days 730
 ```
 
+该脚本需要支持 `-rand_serial` 的新版 OpenSSL。旧版 OpenSSL 和 LibreSSL 不支持此参数；`sudo` 也可能因改变 `PATH` 而调用旧版本。
+
+如果出现 `unknown option -rand_serial` 错误，请先安装 OpenSSL 3：
+
+```bash
+brew install openssl@3
+```
+
 生成证书的命令示例：
 
 ```plaintext
