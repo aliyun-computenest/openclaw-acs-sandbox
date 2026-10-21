@@ -1620,7 +1620,6 @@ Resources:
           - ClusterId
       Addons:
         - Name: ack-agent-sandbox-controller
-          Config: '{"workers":{"sandboxWorkers":200,"sandboxsetWorkers":10,"sandboxclaimWorkers":200},"featureGate":""}'
   # Step 5: Sandbox Manager
   SandboxManagerAddon:
     Type: ALIYUN::CS::ClusterAddons
@@ -1635,7 +1634,7 @@ Resources:
         - Name: ack-sandbox-manager
           Config:
             Fn::Sub:
-              - '{"sandboxManager":{"replicaCount":3,"acs":true,"e2b":{"domain":"${E2BDomainAddress}","enableAuth":true,"adminApiKey":"${AdminApiKey}"},"ingress":{"className":"alb"},"controller":{"resources":{"cpu":"${SandboxManagerCpu}","memory":"${SandboxManagerMemory}"},"logLevel":5,"enableSLS":true,"maxClaimWorkers":100,"maxCreateQPS":200,"createPodInsteadOfSandbox":false,"extProcMaxConcurrency":3000}}}'
+              - '{"sandboxManager":{"acs":true,"e2b":{"domain":"${E2BDomainAddress}","adminApiKey":"${AdminApiKey}"},"ingress":{"className":"alb"},"controller":{"resources":{"cpu":"${SandboxManagerCpu}","memory":"${SandboxManagerMemory}"}}}}'
               - E2BDomainAddress:
                   Ref: E2BDomainAddress
                 AdminApiKey:
