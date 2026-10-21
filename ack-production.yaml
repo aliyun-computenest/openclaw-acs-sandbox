@@ -1558,7 +1558,6 @@ Resources:
       Addons:
         - Name: ack-agent-sandbox-controller
           Config: '{"workers":{"sandboxWorkers":200,"sandboxsetWorkers":10,"sandboxclaimWorkers":200},"featureGate":""}'
-          Version: 'v0.5.12-release.3'
   # Step 5: Sandbox Manager
   SandboxManagerAddon:
     Type: ALIYUN::CS::ClusterAddons
@@ -1571,10 +1570,9 @@ Resources:
       InstalledIgnore: true
       Addons:
         - Name: ack-sandbox-manager
-          Version: 'v0.5.2'
           Config:
             Fn::Sub:
-              - '{"sandboxManager":{"replicaCount":3,"acs":${SandboxManagerScheduleToVirtualNode},"e2b":{"domain":"${E2BDomainAddress}","enableAuth":true,"adminApiKey":"${AdminApiKey}","maxTimeout":2592000},"ingress":{"className":"alb"},"controller":{"resources":{"cpu":"${SandboxManagerCpu}","memory":"${SandboxManagerMemory}"},"logLevel":5,"enableSLS":true,"maxClaimWorkers":100,"maxCreateQPS":200,"createPodInsteadOfSandbox":false,"extProcMaxConcurrency":3000}}}'
+              - '{"sandboxManager":{"replicaCount":3,"acs":${SandboxManagerScheduleToVirtualNode},"e2b":{"domain":"${E2BDomainAddress}","enableAuth":true,"adminApiKey":"${AdminApiKey}"},"ingress":{"className":"alb"},"controller":{"resources":{"cpu":"${SandboxManagerCpu}","memory":"${SandboxManagerMemory}"},"logLevel":5,"enableSLS":true,"maxClaimWorkers":100,"maxCreateQPS":200,"createPodInsteadOfSandbox":false,"extProcMaxConcurrency":3000}}}'
               - E2BDomainAddress:
                   Ref: E2BDomainAddress
                 AdminApiKey:
